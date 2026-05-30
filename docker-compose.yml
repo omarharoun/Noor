@@ -1,0 +1,44 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: paybank-postgres
+    environment:
+      POSTGRES_DB: noralpay
+      POSTGRES_USER: noralpay
+      POSTGRES_PASSWORD: noralpay_dev_password
+    ports:
+      - "5433:5432"
+    volumes:
+      - paybank-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U noralpay -d noralpay"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  api:
+    build: .
+    container_name: paybank-api
+    ports:
+      - "8888:8888"
+    environment:
+      DATABASE_URL: "postgresql://noralpay:noralpay_dev_password@postgres:5432/noralpay"
+      BIND_ADDR: "0.0.0.0:8888"
+      PUBLIC_APP_URL: "http://192.168.1.64:8888"
+      COLUMN_API_KEY: "***REMOVED***"
+      COLUMN_MERCHANT_ACCOUNT_ID: "***REMOVED***"
+      MODERN_TREASURY_ORG_ID: "***REMOVED***"
+      MODERN_TREASURY_API_KEY: "***REMOVED***"
+      MT_INTERNAL_ACCOUNT_ID: "***REMOVED***"
+      PLAID_CLIENT_ID: "***REMOVED***"
+      PLAID_SECRET: "***REMOVED***"
+      PLAID_ENV: "sandbox"
+      WEBHOOK_SECRET: "***REMOVED***"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  paybank-postgres-data:

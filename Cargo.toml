@@ -1,0 +1,32 @@
+[workspace]
+members = [
+    "crates/paybank-core",
+    "crates/paybank-db",
+    "crates/paybank-api",
+    "crates/paybank-payments",
+    "crates/paybank-qr",
+]
+
+[package]
+name = "paybank"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "paybank"
+path = "src/main.rs"
+
+[dependencies]
+paybank-api = { path = "crates/paybank-api" }
+paybank-db = { path = "crates/paybank-db" }
+paybank-core = { path = "crates/paybank-core" }
+sqlx = { version = "0.7", features = ["runtime-tokio", "postgres", "uuid", "chrono", "json", "migrate"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+tokio = { version = "1", features = ["full"] }
+dotenvy = "0.15"
+axum = "0.7"
+anyhow = "1"
+
+[dev-dependencies]
+http-body-util = "0.1"

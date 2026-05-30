@@ -1,0 +1,8 @@
+.env
+.env.bak
+target/
+admin/node_modules/
+admin-react-admin/node_modules/
+.sqlx/
+__pycache__/
+*.pyc

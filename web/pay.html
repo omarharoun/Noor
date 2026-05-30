@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PayBank - Pay</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f0f2f5;color:#1a1f36;display:flex;justify-content:center;padding:40px 20px}
+.card{background:#fff;border-radius:12px;padding:32px;max-width:440px;width:100%;box-shadow:0 1px 3px rgba(50,50,93,.08),0 1px 2px rgba(0,0,0,.06)}
+h1{font-size:20px;margin-bottom:4px;color:#1a1f36}
+.sub{color:#5a6178;font-size:13px;margin-bottom:16px;text-align:center}
+.amount{font-size:40px;font-weight:700;margin:12px 0;text-align:center;color:#1a1f36}
+.amount small{font-size:16px;color:#8a94a6}
+#qrcode{margin:16px 0;min-height:160px;display:flex;justify-content:center;align-items:center}
+#qrcode svg{max-width:180px;border:1px solid #e6ebf1;border-radius:8px;padding:8px;background:#fff}
+.details{text-align:left;margin:16px 0;font-size:13px;border-top:1px solid #e6ebf1;padding-top:12px}
+.details div{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f0f2f5}
+.details span{color:#5a6178}
+.status{padding:4px 14px;border-radius:100px;font-size:12px;font-weight:600;display:inline-block}
+.status-pending{background:#fff4e5;color:#b76e00}
+.status-processing{background:#e3f2fd;color:#1565c0}
+.status-authorized{background:#e8f5e9;color:#2e7d32}
+.status-completed{background:#e8f5e9;color:#2e7d32}
+.status-expired{background:#fce4ec;color:#c62828}
+.error{color:#c62828;background:#fce4ec;padding:12px;border-radius:8px;margin:12px 0;font-size:13px}
+.loading{color:#8a94a6;margin:40px 0;text-align:center}
+.spinner{display:inline-block;width:24px;height:24px;border:3px solid #e6ebf1;border-top-color:#5469d4;border-radius:50%;animation:spin .8s linear infinite;margin-bottom:8px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.btn{display:block;width:100%;padding:12px;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;margin-top:12px;transition:opacity .2s}
+.btn:hover{opacity:.9}
+.btn-primary{background:#5469d4;color:#fff}
+.btn-success{background:#2e7d32;color:#fff}
+.btn-secondary{background:#e6ebf1;color:#1a1f36}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+input{width:100%;padding:10px 12px;border:1px solid #e6ebf1;border-radius:8px;font-size:13px;margin-bottom:8px;font-family:inherit}
+input:focus{outline:none;border-color:#5469d4}
+.row{display:flex;gap:8px}
+.hidden{display:none}
+.badge{display:inline-block;padding:2px 8px;border-radius:100px;font-size:11px;font-weight:600}
+.badge-linked{background:#e8f5e9;color:#2e7d32}
+.badge-not-linked{background:#fff4e5;color:#b76e00}
+</style>
+</head>
+<body>
+<div class="card">
+<h1 style="text-align:center">Payment Request</h1>
+<p class="sub">Scan or pay online</p>
+<div id="content">
+<div class="loading"><div class="spinner"></div><p>Loading payment details...</p></div>
+</div>
+</div>
+
+<script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
+<script>
+const SESSION_ID = '__SESSION_ID__';
+
+async function load() {
+  const el = document.getElementById('content');
+  try {
+    const res = await fetch('/api/sessions/' + SESSION_ID);
+    if (!res.ok) throw new Error(await res.text() || 'Failed to load');
+    const s = await res.json();
+    const expired = s.status === 'expired' || new Date(s.expires_at) < new Date();
+
+    const hasBank = s.customer_account_number && s.customer_account_number.length > 0;
+
+    el.innerHTML = `
+      <div class="amount">$${(s.amount_cents / 100).toFixed(2)} <small>${s.currency}</small></div>
+      <div style="text-align:center;margin:8px 0">
+        <span class="status status-${s.status}">${s.status.toUpperCase()}</span>
+      </div>
+      <div id="qrcode"><div class="spinner"></div></div>
+      <div class="details">
+        <div><span>Session</span> ${s.id.slice(0,8)}…</div>
+        <div><span>Rail</span> ${s.rail_used || '—'}</div>
+        <div><span>Bank</span> ${s.bank_id}</div>
+        <div><span>Expires</span> ${new Date(s.expires_at).toLocaleString()}</div>
+        ${s.note ? `<div><span>Note</span> ${s.note}</div>` : ''}
+        <div><span>Bank Linked</span> <span class="badge ${hasBank ? 'badge-linked' : 'badge-not-linked'}">${hasBank ? 'Yes' : 'No'}</span></div>
+      </div>
+      <div id="bank-section" class="${s.status !== 'pending' ? 'hidden' : ''}">
+        <hr style="border:none;border-top:1px solid #e6ebf1;margin:12px 0">
+        <div id="plaid-status" style="font-size:12px;color:#5a6178;margin-bottom:8px;text-align:center">
+          ${hasBank ? '<span class="badge badge-linked">Bank linked via Plaid</span>' : ''}
+        </div>
+        <button id="link-btn" class="btn btn-secondary" ${s.status !== 'pending' ? 'disabled' : ''}>
+          ${hasBank ? 'Change Bank' : 'Link Bank Account'}
+        </button>
+        <div id="confirm-section">
+          <input id="customer-name" placeholder="Full Name" value="${s.customer_name || ''}" ${s.status !== 'pending' ? 'disabled' : ''}>
+          <input id="customer-address" placeholder="Street Address" value="${s.customer_address_line_1 || ''}" ${s.status !== 'pending' ? 'disabled' : ''}>
+          <div class="row">
+            <input id="customer-city" placeholder="City" value="${s.customer_address_city || ''}" ${s.status !== 'pending' ? 'disabled' : ''}>
+            <input id="customer-state" placeholder="State" value="${s.customer_address_state || ''}" style="max-width:80px" ${s.status !== 'pending' ? 'disabled' : ''}>
+            <input id="customer-zip" placeholder="Zip" value="${s.customer_address_postal_code || ''}" style="max-width:100px" ${s.status !== 'pending' ? 'disabled' : ''}>
+          </div>
+          <button id="confirm-btn" class="btn btn-primary" ${s.status !== 'pending' ? 'disabled' : ''}>
+            ${s.status === 'pending' ? 'Confirm & Pay' : 'Already ' + s.status}
+          </button>
+        </div>
+      </div>
+      <div id="status-msg"></div>
+    `;
+
+    fetch('/api/sessions/' + SESSION_ID + '/qr')
+      .then(r => { if (!r.ok) throw new Error('QR failed'); return r.text(); })
+      .then(svg => { const q = document.getElementById('qrcode'); if (q) q.innerHTML = svg; })
+      .catch(() => { const q = document.getElementById('qrcode'); if (q) q.innerHTML = '<p style="color:#8a94a6;font-size:12px">QR unavailable</p>'; });
+
+    document.getElementById('link-btn')?.addEventListener('click', openPlaidLink);
+    document.getElementById('confirm-btn')?.addEventListener('click', confirmPayment);
+  } catch (e) {
+    el.innerHTML = '<div class="error">' + e.message + '</div>';
+  }
+}
+
+function openPlaidLink() {
+  const btn = document.getElementById('link-btn');
+  btn.disabled = true;
+  btn.textContent = 'Connecting...';
+
+  fetch('/api/plaid/link-token?session_id=' + SESSION_ID)
+    .then(r => r.json())
+    .then(data => {
+      const handler = Plaid.create({
+        token: data.link_token,
+        onSuccess: (public_token) => {
+          fetch('/api/plaid/exchange', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ session_id: SESSION_ID, public_token })
+          })
+          .then(r => r.json())
+          .then(() => {
+            document.getElementById('plaid-status').innerHTML = '<span class="badge badge-linked">Bank linked successfully</span>';
+            btn.textContent = 'Change Bank';
+            btn.disabled = false;
+            load();
+          })
+          .catch(() => {
+            document.getElementById('plaid-status').textContent = 'Failed to link bank. Try again.';
+            btn.textContent = 'Link Bank Account';
+            btn.disabled = false;
+          });
+        },
+        onExit: () => {
+          btn.textContent = 'Link Bank Account';
+          btn.disabled = false;
+        }
+      });
+      handler.open();
+    })
+    .catch(() => {
+      document.getElementById('plaid-status').textContent = 'Failed to get link token.';
+      btn.textContent = 'Link Bank Account';
+      btn.disabled = false;
+    });
+}
+
+async function confirmPayment() {
+  const name = document.getElementById('customer-name')?.value.trim();
+  const addr = document.getElementById('customer-address')?.value.trim();
+  const city = document.getElementById('customer-city')?.value.trim();
+  const state = document.getElementById('customer-state')?.value.trim();
+  const zip = document.getElementById('customer-zip')?.value.trim();
+
+  if (!name || !addr || !city || !state || !zip) {
+    document.getElementById('status-msg').innerHTML = '<div class="error">Please fill in all fields</div>';
+    return;
+  }
+
+  const btn = document.getElementById('confirm-btn');
+  btn.disabled = true;
+  btn.textContent = 'Confirming...';
+
+  try {
+    const res = await fetch('/api/sessions/' + SESSION_ID + '/confirm', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        session_id: SESSION_ID,
+        customer_name: name,
+        customer_address_line_1: addr,
+        customer_city: city,
+        customer_state: state,
+        customer_postal_code: zip,
+        customer_country_code: 'US'
+      })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Confirmation failed');
+    document.getElementById('status-msg').innerHTML = '<div style="color:#2e7d32;background:#e8f5e9;padding:8px;border-radius:8px;font-size:13px;text-align:center;margin-top:8px">Payment authorized! Waiting for settlement...</div>';
+    btn.textContent = 'Confirmed ✓';
+    connectSSE();
+  } catch (e) {
+    document.getElementById('status-msg').innerHTML = '<div class="error">' + e.message + '</div>';
+    btn.disabled = false;
+    btn.textContent = 'Confirm & Pay';
+  }
+}
+
+function connectSSE() {
+  const evtSource = new EventSource('/api/sessions/' + SESSION_ID + '/stream');
+  evtSource.onmessage = (event) => {
+    try {
+      const data = JSON.parse(event.data);
+      const statusEl = document.getElementById('status-msg');
+      if (data.status === 'completed') {
+        statusEl.innerHTML = '<div style="color:#2e7d32;background:#e8f5e9;padding:12px;border-radius:8px;font-size:14px;text-align:center;margin-top:8px;font-weight:600">&#10003; Payment completed!</div>';
+        load();
+        evtSource.close();
+      } else if (data.status === 'processing') {
+        statusEl.innerHTML = '<div style="color:#1565c0;background:#e3f2fd;padding:8px;border-radius:8px;font-size:13px;text-align:center;margin-top:8px">Processing payment...</div>';
+      } else if (data.status === 'expired') {
+        statusEl.innerHTML = '<div class="error">Payment expired or failed.</div>';
+        load();
+        evtSource.close();
+      }
+    } catch (e) {}
+  };
+  evtSource.onerror = () => {};
+}
+
+if (SESSION_ID) {
+  load();
+  connectSSE();
+}
+</script>
+</body>
+</html>

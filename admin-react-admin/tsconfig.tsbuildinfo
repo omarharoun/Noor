@@ -1,0 +1,1 @@
+{"root":["./src/App.tsx","./src/dataProvider.ts","./src/main.tsx","./src/vite-env.d.ts","./src/pages/BanksPage.tsx","./src/pages/Dashboard.tsx","./src/pages/MerchantsPage.tsx","./src/pages/SettlementsPage.tsx","./src/pages/TransactionsPage.tsx","./src/pages/WebhooksPage.tsx","./src/themes/darkTheme.ts"],"version":"5.9.3"}

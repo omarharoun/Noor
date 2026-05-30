@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PayBank - Invoice</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f0f2f5;color:#1a1f36;padding:40px 20px}
+.container{max-width:800px;margin:0 auto}
+.invoice{background:#fff;border-radius:12px;box-shadow:0 1px 3px rgba(50,50,93,.08);overflow:hidden}
+.invoice-header{padding:32px;border-bottom:2px solid #f0f2f5;display:flex;justify-content:space-between;align-items:flex-start}
+.invoice-header h1{font-size:24px;font-weight:700}
+.invoice-header .meta{text-align:right;color:#5a6178;font-size:13px}
+.invoice-body{padding:32px}
+.section-title{font-size:13px;font-weight:600;color:#5a6178;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px;margin-top:24px}
+.section-title:first-child{margin-top:0}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:16px}
+.grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:16px}
+.field{margin-bottom:4px}
+.field label{font-size:11px;color:#8a94a6;text-transform:uppercase;letter-spacing:.3px;display:block}
+.field .value{font-size:14px;font-weight:500;color:#1a1f36;padding:2px 0}
+.amount-large{font-size:36px;font-weight:700;color:#1a1f36}
+.amount-large small{font-size:16px;color:#8a94a6;font-weight:400}
+.status-badge{display:inline-block;padding:4px 14px;border-radius:100px;font-size:12px;font-weight:600}
+.badge-pending{background:#fff4e5;color:#b76e00}
+.badge-processing{background:#e3f2fd;color:#1565c0}
+.badge-authorized{background:#e8f5e9;color:#2e7d32}
+.badge-completed{background:#e8f5e9;color:#2e7d32}
+.badge-expired{background:#fce4ec;color:#c62828}
+table{width:100%;border-collapse:collapse;font-size:13px;margin:8px 0}
+th{text-align:left;padding:8px 12px;font-weight:500;color:#5a6178;font-size:11px;text-transform:uppercase;letter-spacing:.3px;border-bottom:2px solid #e6ebf1}
+td{padding:8px 12px;border-bottom:1px solid #f0f2f5}
+.mt-data{background:#f8f9ff;border:1px solid #dde;border-radius:8px;padding:16px;margin:8px 0}
+.mt-data .row{display:flex;justify-content:space-between;padding:4px 0;font-size:13px;border-bottom:1px solid #f0f2f5}
+.mt-data .row:last-child{border-bottom:none}
+.mt-data .row span:first-child{color:#5a6178}
+.loading{text-align:center;padding:60px 20px;color:#8a94a6}
+.loading .spinner{display:inline-block;width:32px;height:32px;border:3px solid #e6ebf1;border-top-color:#5469d4;border-radius:50%;animation:spin .8s linear infinite;margin-bottom:12px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.error{color:#c62828;background:#fce4ec;padding:12px;border-radius:8px;margin:12px 0;font-size:13px}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border:none;border-radius:6px;font-size:13px;font-weight:500;cursor:pointer;text-decoration:none;color:#fff;background:#5469d4;transition:.15s}
+.btn:hover{background:#4054b2}
+.btn-secondary{background:#e6ebf1;color:#1a1f36}
+.btn-secondary:hover{background:#d9dde8}
+.header-actions{display:flex;gap:8px;margin-top:12px}
+pre{font-size:11px;background:#f8f9ff;padding:12px;border-radius:6px;overflow-x:auto;max-height:200px;border:1px solid #e6ebf1}
+</style>
+</head>
+<body>
+<div class="container">
+<div class="loading" id="loading"><div class="spinner"></div><p>Loading invoice...</p></div>
+<div class="invoice" id="invoice" style="display:none"></div>
+</div>
+
+<script>
+const SESSION_ID = '__SESSION_ID__';
+
+async function load() {
+  try {
+    const s = await (await fetch('/api/sessions/' + SESSION_ID)).json();
+    let mtOrder = null, mtCp = null;
+
+    if (s.column_ref) {
+      try {
+        mtOrder = await (await fetch('/api/mt/payment-orders/' + s.column_ref)).json();
+      } catch(e) { mtOrder = { error: 'Failed to fetch from MT' }; }
+    }
+    if (s.column_counterparty_id) {
+      const cpId = s.column_counterparty_id.split('|')[0];
+      try {
+        mtCp = await (await fetch('/api/mt/counterparties/' + cpId)).json();
+      } catch(e) { mtCp = { error: 'Failed to fetch from MT' }; }
+    }
+
+    document.getElementById('loading').style.display = 'none';
+    const el = document.getElementById('invoice');
+    el.style.display = 'block';
+    el.innerHTML = `
+      <div class="invoice-header">
+        <div>
+          <h1>Invoice</h1>
+          <div style="color:#5a6178;font-size:13px;margin-top:4px">Session ${s.id.slice(0,8)}…</div>
+        </div>
+        <div class="meta">
+          <div>${new Date(s.created_at).toLocaleDateString('en-US', {year:'numeric',month:'long',day:'numeric'})}</div>
+          <div style="margin-top:4px"><span class="status-badge badge-${s.status}">${s.status.toUpperCase()}</span></div>
+        </div>
+      </div>
+      <div class="invoice-body">
+        <div class="amount-large">$${(s.amount_cents/100).toFixed(2)} <small>${s.currency}</small></div>
+
+        <div class="section-title">Payment Details</div>
+        <div class="grid">
+          <div class="field"><label>Payment Rail</label><div class="value">${s.rail_used || '—'}</div></div>
+          <div class="field"><label>Bank</label><div class="value">${s.bank_id}</div></div>
+          <div class="field"><label>Note</label><div class="value">${s.note || '—'}</div></div>
+          <div class="field"><label>Expires</label><div class="value">${new Date(s.expires_at).toLocaleString()}</div></div>
+        </div>
+
+        ${s.customer_name ? `
+        <div class="section-title">Customer</div>
+        <div class="grid-3">
+          <div class="field"><label>Name</label><div class="value">${s.customer_name}</div></div>
+          <div class="field"><label>Email</label><div class="value">${s.customer_email || '—'}</div></div>
+          <div class="field"><label>Phone</label><div class="value">${s.customer_phone || '—'}</div></div>
+        </div>
+        <div class="grid">
+          <div class="field"><label>Address</label><div class="value">${s.customer_address_line_1 || ''}, ${s.customer_address_city || ''}, ${s.customer_address_state || ''} ${s.customer_address_postal_code || ''}</div></div>
+        </div>
+        ` : ''}
+
+        ${s.customer_account_number ? `
+        <div class="section-title">Bank Account</div>
+        <div class="grid-3">
+          <div class="field"><label>Account Number</label><div class="value">••••${s.customer_account_number.slice(-4)}</div></div>
+          <div class="field"><label>Routing Number</label><div class="value">${s.customer_routing_number || '—'}</div></div>
+          <div class="field"><label>Account Type</label><div class="value">${s.customer_account_type || '—'}</div></div>
+        </div>
+        ` : ''}
+
+        <div class="section-title">Modern Treasury</div>
+        <div class="mt-data">
+          <div class="row"><span>Payment Order ID</span><span>${s.column_ref || '—'}</span></div>
+          <div class="row"><span>Counterparty ID</span><span>${(s.column_counterparty_id || '—').split('|')[0]}</span></div>
+          <div class="row"><span>External Account ID</span><span>${(s.column_counterparty_id || '—').split('|')[1] || '—'}</span></div>
+          ${mtOrder ? (mtOrder.error ? `
+          <div class="row"><span>MT Status</span><span style="color:#8a94a6">${mtOrder.error}</span></div>
+          ` : `
+          <div class="row"><span>MT Status</span><span class="status-badge badge-${mtOrder.status}">${mtOrder.status.toUpperCase()}</span></div>
+          <div class="row"><span>MT Type</span><span>${mtOrder.type || '—'}</span></div>
+          <div class="row"><span>MT Direction</span><span>${mtOrder.direction || '—'}</span></div>
+          <div class="row"><span>MT Created</span><span>${mtOrder.created_at ? new Date(mtOrder.created_at).toLocaleString() : '—'}</span></div>
+          <div class="row"><span>MT Updated</span><span>${mtOrder.updated_at ? new Date(mtOrder.updated_at).toLocaleString() : '—'}</span></div>
+          <div style="margin-top:8px"><a href="https://app.moderntreasury.com/payment-orders/${s.column_ref}" target="_blank" class="btn btn-secondary">View in Modern Treasury →</a></div>
+          `) : '<div class="row"><span>Loading MT data...</span></div>'}
+        </div>
+
+        ${mtCp && !mtCp.error ? `
+        <div class="section-title">MT Counterparty</div>
+        <div class="mt-data">
+          <div class="row"><span>Name</span><span>${mtCp.name || '—'}</span></div>
+          <div class="row"><span>Email</span><span>${mtCp.email || '—'}</span></div>
+          <div class="row"><span>ID</span><span style="font-family:monospace;font-size:11px">${mtCp.id || '—'}</span></div>
+          ${mtCp.accounts && mtCp.accounts.length > 0 ? `
+          <div style="margin-top:8px;font-weight:600;font-size:12px">Accounts</div>
+          <table><tr><th>ID</th><th>Status</th><th>Account #</th></tr>
+          ${mtCp.accounts.map(a => `
+            <tr>
+              <td style="font-family:monospace;font-size:11px">${a.id?.slice(0,8) || '—'}…</td>
+              <td><span class="status-badge badge-${a.status === 'completed' ? 'completed' : 'pending'}">${(a.status || 'active').toUpperCase()}</span></td>
+              <td>${a.account_details?.[0]?.account_number_safe ? '••••' + a.account_details[0].account_number_safe : '—'}</td>
+            </tr>
+          `).join('')}
+          </table>
+          ` : ''}
+        </div>
+        ` : ''}
+
+        <div class="header-actions">
+          <a href="/pay/${SESSION_ID}" class="btn">Pay Page</a>
+          <a href="/static/dashboard.html" class="btn btn-secondary">Dashboard</a>
+        </div>
+      </div>
+    `;
+  } catch(e) {
+    document.getElementById('loading').innerHTML = '<div class="error">Failed to load invoice: ' + e.message + '</div>';
+  }
+}
+
+if (SESSION_ID) load();
+</script>
+</body>
+</html>
