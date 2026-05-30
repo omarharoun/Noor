@@ -217,7 +217,7 @@ pub async fn initiate_payment(
 }
 
 fn generate_qr_data(pay_url: &str) -> String {
-    let prefix = "https://pay.paybank.com/p/";
+    let prefix = "https://pay.noor.com/p/";
     if pay_url.starts_with(prefix) {
         pay_url.to_string()
     } else {

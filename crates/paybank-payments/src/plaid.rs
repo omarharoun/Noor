@@ -127,7 +127,7 @@ pub async fn create_link_token(session_id: &uuid::Uuid) -> Result<String, AppErr
     let request = LinkTokenCreateRequest {
         client_id,
         secret,
-        client_name: "PayBank".to_string(),
+        client_name: "Noor".to_string(),
         country_codes: vec!["US".to_string()],
         language: "en".to_string(),
         user: LinkUser {

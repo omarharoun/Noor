@@ -1,4 +1,4 @@
-# NoorPay — Payment Operations Monolith
+# Noor — Payment Operations Monolith
 
 A full-stack payment processing platform with a Rust API backend, Refine + Ant Design admin dashboard, and integrations with Modern Treasury, Column, and Plaid.
 
@@ -362,7 +362,7 @@ Custom `@refinedev/simple-rest` wrapper at `/api/admin` with pagination (`limit`
 ### 1. Clone and Environment
 
 ```bash
-git clone git@github.com:omarharoun/NoorPay.git
+git clone git@github.com:omarharoun/Noor.git
 cd paybank-monolith
 cp .env.example .env
 ```
@@ -487,7 +487,7 @@ Ensure all env vars in `.env` are set for your production environment:
 |---|---|---|
 | `DATABASE_URL` | `postgresql://user:pass@host:5432/db` | Startup |
 | `BIND_ADDR` | `0.0.0.0:8888` | Startup |
-| `PUBLIC_APP_URL` | `https://noorpay.com` | Payment links, QR codes |
+| `PUBLIC_APP_URL` | `https://noor.com` | Payment links, QR codes |
 | `MODERN_TREASURY_ORG_ID` | `uuid` | Modern Treasury |
 | `MODERN_TREASURY_API_KEY` | `sk_xxxxx` | Modern Treasury |
 | `MT_INTERNAL_ACCOUNT_ID` | `uuid` | Modern Treasury |

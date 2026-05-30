@@ -25,7 +25,7 @@ async fn main() -> anyhow::Result<()> {
 
     let addr = std::env::var("BIND_ADDR").unwrap_or_else(|_| "0.0.0.0:3000".into());
 
-    info!("PayBank API starting on {}", addr);
+    info!("Noor API starting on {}", addr);
 
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     axum::serve(listener, router).await?;
