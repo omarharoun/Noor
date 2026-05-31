@@ -105,6 +105,10 @@ pub fn build_router(state: AppState) -> Router {
             "/api/admin/webhooks/:id/retry",
             post(routes::admin::retry_webhook),
         )
+        .route(
+            "/api/admin/operators",
+            get(routes::admin::list_operators).post(routes::admin::create_operator),
+        )
         .route_layer(middleware::from_fn_with_state(state.clone(), auth::admin_auth));
 
     // Operator surface: session creation/listing, money initiation and the

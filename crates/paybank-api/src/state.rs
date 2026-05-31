@@ -9,8 +9,10 @@ use std::time::Instant;
 pub struct Config {
     pub public_app_url: String,
     pub jwt_secret: String,
-    pub admin_email: String,
-    pub admin_password: String,
+    // Optional bootstrap operator seed (ADMIN_EMAIL/ADMIN_PASSWORD). Real accounts
+    // live in the `operators` table; these only seed the first login on a fresh DB.
+    pub admin_email: Option<String>,
+    pub admin_password: Option<String>,
 }
 
 impl Config {
@@ -23,12 +25,11 @@ impl Config {
         if jwt_secret.len() < 32 {
             anyhow::bail!("JWT_SECRET is too short; use a 32+ byte random secret");
         }
-        // Bootstrap operator credentials. A real user store is a follow-up; this
-        // gates the console today instead of leaving /api/admin/* wide open.
-        let admin_email =
-            std::env::var("ADMIN_EMAIL").unwrap_or_else(|_| "admin@noor.local".into());
-        let admin_password = std::env::var("ADMIN_PASSWORD")
-            .map_err(|_| anyhow::anyhow!("ADMIN_PASSWORD must be set (bootstrap operator login)"))?;
+        // Optional bootstrap operator seed. If set, an operator row is upserted on
+        // startup (role `owner`); otherwise the DB `operators` table is the only
+        // source of logins.
+        let admin_email = std::env::var("ADMIN_EMAIL").ok().filter(|s| !s.is_empty());
+        let admin_password = std::env::var("ADMIN_PASSWORD").ok().filter(|s| !s.is_empty());
         Ok(Self {
             public_app_url,
             jwt_secret,

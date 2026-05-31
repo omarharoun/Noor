@@ -3,6 +3,7 @@ pub mod attempt_repo;
 pub mod bank_repo;
 pub mod idempotency_repo;
 pub mod ledger_repo;
+pub mod operator_repo;
 pub mod session_repo;
 pub mod transaction_repo;
 pub mod webhook_repo;

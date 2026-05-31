@@ -8,7 +8,9 @@
 //!   id is injected into request extensions so handlers stop using a hardcoded
 //!   demo id.
 
-use crate::state::AppState;
+use crate::state::{AppState, Config};
+use argon2::password_hash::{rand_core::OsRng, SaltString};
+use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 use axum::{
     extract::{Request, State},
     http::header,
@@ -18,12 +20,15 @@ use axum::{
 };
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use paybank_core::{AppError, Merchant};
+use paybank_db::operator_repo;
 use serde::{Deserialize, Serialize};
+use sqlx::PgPool;
+use std::sync::OnceLock;
 use uuid::Uuid;
 
 const TOKEN_TTL_SECS: i64 = 12 * 3600;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Claims {
     pub sub: String, // operator email
     pub name: String,
@@ -34,6 +39,35 @@ pub struct Claims {
 /// The authenticated merchant, injected into request extensions by `merchant_auth`.
 #[derive(Clone, Copy)]
 pub struct AuthedMerchant(pub Uuid);
+
+/// The authenticated operator (decoded JWT claims), injected by `admin_auth`.
+#[derive(Clone)]
+pub struct AuthedOperator(pub Claims);
+
+// ---- password hashing (Argon2) -------------------------------------------
+
+/// Hash a plaintext password with Argon2id. Public so operator-management
+/// handlers can hash new operators' passwords.
+pub fn hash_password(plaintext: &str) -> Result<String, AppError> {
+    let salt = SaltString::generate(&mut OsRng);
+    Argon2::default()
+        .hash_password(plaintext.as_bytes(), &salt)
+        .map(|h| h.to_string())
+        .map_err(|e| AppError::Internal(anyhow::anyhow!("password hashing failed: {e}")))
+}
+
+fn verify_password(plaintext: &str, hash: &str) -> bool {
+    PasswordHash::new(hash)
+        .map(|parsed| Argon2::default().verify_password(plaintext.as_bytes(), &parsed).is_ok())
+        .unwrap_or(false)
+}
+
+/// A valid Argon2 hash of a throwaway value, computed once, used to keep the
+/// "no such operator" path's timing close to the real verify (anti-enumeration).
+fn dummy_hash() -> &'static str {
+    static H: OnceLock<String> = OnceLock::new();
+    H.get_or_init(|| hash_password("noor-timing-dummy").unwrap_or_default())
+}
 
 fn issue_token(config: &crate::state::Config, claims_sub: &str, name: &str, role: &str) -> Result<String, AppError> {
     let exp = (chrono::Utc::now().timestamp() + TOKEN_TTL_SECS) as usize;
@@ -66,19 +100,6 @@ fn bearer<'a>(req: &'a Request) -> Option<&'a str> {
         .get(header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
         .and_then(|s| s.strip_prefix("Bearer "))
-}
-
-/// Constant-time string comparison to avoid leaking the admin password via timing.
-fn ct_eq(a: &str, b: &str) -> bool {
-    let (a, b) = (a.as_bytes(), b.as_bytes());
-    if a.len() != b.len() {
-        return false;
-    }
-    let mut diff = 0u8;
-    for (x, y) in a.iter().zip(b.iter()) {
-        diff |= x ^ y;
-    }
-    diff == 0
 }
 
 // ---- handlers -------------------------------------------------------------
@@ -125,26 +146,57 @@ pub async fn login(
         entry.0 += 1;
     }
 
-    // Both comparisons run regardless of email match to keep timing flat.
-    let email_ok = ct_eq(&body.email, &cfg.admin_email);
-    let pw_ok = ct_eq(&body.password, &cfg.admin_password);
-    if !(email_ok && pw_ok) {
+    // DB-backed operator accounts (Argon2). Look up by email, verify the hash.
+    let operator = operator_repo::get_by_email(&state.db.pool, &body.email)
+        .await
+        .map_err(AppError::Internal)?;
+
+    let valid = match &operator {
+        Some(op) if op.is_active => verify_password(&body.password, &op.password_hash),
+        // No such (active) operator → still run a verify against a dummy hash so
+        // the response time doesn't reveal whether the email exists.
+        _ => {
+            let _ = verify_password(&body.password, dummy_hash());
+            false
+        }
+    };
+    if !valid {
         return Err(AppError::Unauthorized);
     }
+    let op = operator.expect("valid implies Some");
 
     // Successful login clears the counter.
     state.login_throttle.lock().unwrap().remove(&body.email);
-    let name = "Operator";
-    let role = "operator";
-    let token = issue_token(cfg, &cfg.admin_email, name, role)?;
+    let token = issue_token(cfg, &op.email, &op.name, &op.role)?;
     Ok(Json(LoginResponse {
         token,
         operator: Operator {
-            name: name.to_string(),
-            email: cfg.admin_email.clone(),
-            role: role.to_string(),
+            name: op.name,
+            email: op.email,
+            role: op.role,
         },
     }))
+}
+
+/// Idempotently seed the bootstrap operator from `ADMIN_EMAIL`/`ADMIN_PASSWORD`
+/// (role `owner`) so a fresh database has a working login. Does nothing if that
+/// email already exists (a changed password is never reset on reboot).
+pub async fn ensure_bootstrap_operator(pool: &PgPool, config: &Config) -> anyhow::Result<()> {
+    match (&config.admin_email, &config.admin_password) {
+        (Some(email), Some(password)) => {
+            let hash = hash_password(password).map_err(|e| anyhow::anyhow!("{e}"))?;
+            operator_repo::upsert_bootstrap(pool, email, "Operator", &hash, "owner").await?;
+            tracing::info!(email = %email, "bootstrap operator ensured");
+        }
+        _ => {
+            if operator_repo::count(pool).await? == 0 {
+                tracing::warn!(
+                    "no operators exist and ADMIN_EMAIL/ADMIN_PASSWORD not set — the admin console has NO login"
+                );
+            }
+        }
+    }
+    Ok(())
 }
 
 pub async fn me(
@@ -165,11 +217,13 @@ pub async fn me(
 /// Gate `/api/admin/*` (except `/login`) on a valid operator JWT.
 pub async fn admin_auth(
     State(state): State<AppState>,
-    req: Request,
+    mut req: Request,
     next: Next,
 ) -> Result<Response, AppError> {
     let token = bearer(&req).ok_or(AppError::Unauthorized)?;
-    decode_token(&state.config, token)?;
+    let claims = decode_token(&state.config, token)?;
+    // Expose the operator (incl. role) to handlers for role-gated actions.
+    req.extensions_mut().insert(AuthedOperator(claims));
     Ok(next.run(req).await)
 }
 

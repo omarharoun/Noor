@@ -25,5 +25,6 @@ hex = "0.4"
 anyhow = "1"
 tracing = "0.1"
 jsonwebtoken = "9"
+argon2 = "0.5"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 sqlx = { version = "0.7", features = ["runtime-tokio", "tls-rustls", "postgres", "uuid", "chrono"] }

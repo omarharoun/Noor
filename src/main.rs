@@ -34,6 +34,9 @@ async fn main() -> anyhow::Result<()> {
 
     sqlx::migrate!("./migrations").run(&pool).await?;
 
+    // Seed the bootstrap operator (from ADMIN_EMAIL/ADMIN_PASSWORD) if configured.
+    paybank_api::auth::ensure_bootstrap_operator(&pool, &config).await?;
+
     let db = Db::new(pool);
     let state = AppState::new(db, config);
 

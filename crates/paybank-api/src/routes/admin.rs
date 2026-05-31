@@ -1,11 +1,12 @@
+use crate::auth::AuthedOperator;
 use crate::state::AppState;
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
-    Json,
+    Extension, Json,
 };
 use paybank_core::{AppError, Merchant};
-use paybank_db::admin_repo;
+use paybank_db::{admin_repo, operator_repo};
 use serde::Deserialize;
 use uuid::Uuid;
 
@@ -185,6 +186,48 @@ pub async fn list_webhooks(
         .await
         .map_err(|e| AppError::Internal(e))?;
     Ok(Json(serde_json::json!({ "events": events, "total": total })))
+}
+
+// ---- operator (console user) management ----------------------------------
+
+pub async fn list_operators(
+    State(state): State<AppState>,
+    Extension(AuthedOperator(_claims)): Extension<AuthedOperator>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let operators = operator_repo::list(&state.db.pool)
+        .await
+        .map_err(AppError::Internal)?;
+    Ok(Json(serde_json::json!({ "operators": operators })))
+}
+
+#[derive(Deserialize)]
+pub struct CreateOperatorBody {
+    email: String,
+    name: String,
+    password: String,
+    role: Option<String>,
+}
+
+pub async fn create_operator(
+    State(state): State<AppState>,
+    Extension(AuthedOperator(claims)): Extension<AuthedOperator>,
+    Json(body): Json<CreateOperatorBody>,
+) -> Result<(StatusCode, Json<serde_json::Value>), AppError> {
+    // Only an `owner` may mint new operators (no privilege escalation).
+    if claims.role != "owner" {
+        return Err(AppError::Unauthorized);
+    }
+    if body.password.len() < 12 {
+        return Err(AppError::ComplianceRejected(
+            "operator password must be at least 12 characters".into(),
+        ));
+    }
+    let role = body.role.unwrap_or_else(|| "operator".into());
+    let hash = crate::auth::hash_password(&body.password)?;
+    let op = operator_repo::create(&state.db.pool, &body.email, &body.name, &hash, &role)
+        .await
+        .map_err(AppError::Internal)?;
+    Ok((StatusCode::CREATED, Json(serde_json::to_value(op).unwrap())))
 }
 
 /// Requeue a failed/exhausted webhook event for immediate redelivery.
