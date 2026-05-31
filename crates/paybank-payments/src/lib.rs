@@ -63,12 +63,15 @@ pub async fn create_counterparty(
 }
 
 pub async fn initiate_transfer(
-    _session_id: uuid::Uuid,
+    session_id: uuid::Uuid,
     counterparty_id: &str,
     rail: &PaymentRail,
     amount_cents: i64,
     description: &str,
 ) -> Result<TransferResult, AppError> {
+    // Deterministic per-session key so a retried transfer reuses the same
+    // provider payment order instead of moving money twice.
+    let idempotency_key = format!("noor-transfer-{}", session_id);
     let provider = PaymentProvider::primary();
     match provider {
         PaymentProvider::ModernTreasury => {
@@ -80,6 +83,7 @@ pub async fn initiate_transfer(
                 rail,
                 amount_cents,
                 description,
+                &idempotency_key,
             )
             .await?;
             Ok(TransferResult {
@@ -96,6 +100,7 @@ pub async fn initiate_transfer(
                 rail,
                 amount_cents,
                 description,
+                &idempotency_key,
             )
             .await?;
             Ok(TransferResult {

@@ -206,6 +206,11 @@ pub async fn create_merchant(
     .bind(api_key)
     .fetch_one(pool)
     .await?;
+
+    // Provision the merchant's chart of accounts so ledger postings and balance
+    // queries work for them from day one.
+    crate::ledger_repo::LedgerRepo::ensure_merchant_accounts(pool, merchant.id).await?;
+
     Ok(merchant)
 }
 

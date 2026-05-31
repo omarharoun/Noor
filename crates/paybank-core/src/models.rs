@@ -106,6 +106,27 @@ pub enum SessionStatus {
     Processing,
     Completed,
     Expired,
+    // Distinct money-failure terminals. Never reuse `Expired` (an unused/timed-out
+    // link) for a transfer outcome — operators and reconciliation must tell them apart.
+    Failed,
+    Returned,
+    Reversed,
+}
+
+impl std::fmt::Display for SessionStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            SessionStatus::Pending => "pending",
+            SessionStatus::Authorized => "authorized",
+            SessionStatus::Processing => "processing",
+            SessionStatus::Completed => "completed",
+            SessionStatus::Expired => "expired",
+            SessionStatus::Failed => "failed",
+            SessionStatus::Returned => "returned",
+            SessionStatus::Reversed => "reversed",
+        };
+        write!(f, "{}", s)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, sqlx::Type)]
@@ -337,7 +358,13 @@ pub struct PaymentSession {
     pub customer_address_state: Option<String>,
     pub customer_address_postal_code: Option<String>,
     pub customer_address_country_code: Option<String>,
+    // PII: never serialized out (admin/operator list + detail endpoints serialize
+    // this struct). Internal DB reads use sqlx FromRow, not serde, so confirm/
+    // initiate still see the value; the public pay endpoint builds its own JSON
+    // exposing only a masked last-4.
+    #[serde(skip_serializing)]
     pub customer_account_number: Option<String>,
+    #[serde(skip_serializing)]
     pub customer_routing_number: Option<String>,
     pub customer_account_type: Option<String>,
     pub expires_at: DateTime<Utc>,

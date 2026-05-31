@@ -1,0 +1,166 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO payment_sessions\n           (id, merchant_id, bank_id, amount_cents, currency, note, status, rail_used, expires_at, created_at, updated_at)\n           VALUES ($1, $2, $3, $4, 'USD', $5, 'pending', $6, $7, NOW(), NOW())\n           RETURNING\n            id, merchant_id, bank_id, amount_cents, currency, note,\n            status as \"status: SessionStatus\",\n            rail_used as \"rail_used: PaymentRail\",\n            column_ref, column_counterparty_id,\n            customer_name, customer_email, customer_phone,\n            customer_address_line_1, customer_address_city, customer_address_state,\n            customer_address_postal_code, customer_address_country_code,\n            customer_account_number, customer_routing_number, customer_account_type,\n            expires_at, created_at, updated_at",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "merchant_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "bank_id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "amount_cents",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 4,
+        "name": "currency",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "note",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "status: SessionStatus",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "rail_used: PaymentRail",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 8,
+        "name": "column_ref",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 9,
+        "name": "column_counterparty_id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 10,
+        "name": "customer_name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 11,
+        "name": "customer_email",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 12,
+        "name": "customer_phone",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 13,
+        "name": "customer_address_line_1",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 14,
+        "name": "customer_address_city",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 15,
+        "name": "customer_address_state",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 16,
+        "name": "customer_address_postal_code",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 17,
+        "name": "customer_address_country_code",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 18,
+        "name": "customer_account_number",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 19,
+        "name": "customer_routing_number",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 20,
+        "name": "customer_account_type",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 21,
+        "name": "expires_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 22,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 23,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Int8",
+        "Text",
+        "Text",
+        "Timestamptz"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "b1d7593058a7ac3911fee9ec9655e316186e7d0484f67fa5ca13c82896396dab"
+}

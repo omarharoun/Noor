@@ -1,14 +1,13 @@
+use crate::auth::AuthedMerchant;
 use crate::state::AppState;
 use axum::extract::{Path, Query, State};
-use axum::Json;
+use axum::{Extension, Json};
 use chrono::{Duration, Utc};
 use paybank_core::AppError;
 use paybank_core::PaymentRail;
 use paybank_db::{bank_repo, session_repo, transaction_repo};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-
-const DEMO_MERCHANT_ID: &str = "00000000-0000-0000-0000-000000000001";
 
 #[derive(Serialize)]
 pub struct BalanceResponse {
@@ -19,13 +18,25 @@ pub struct BalanceResponse {
 }
 
 pub async fn get_balance(
-    State(_state): State<AppState>,
-    Path(merchant_id): Path<Uuid>,
+    State(state): State<AppState>,
+    Extension(AuthedMerchant(merchant_id)): Extension<AuthedMerchant>,
+    Path(_path_id): Path<Uuid>,
 ) -> Result<Json<BalanceResponse>, AppError> {
+    // Use the authenticated merchant id, never the path param (closes IDOR).
+    // available = net credit on the merchant's Settlement (liability) ledger
+    // account; pending = sum of their in-flight (processing) sessions.
+    let available =
+        paybank_db::ledger_repo::LedgerRepo::merchant_available_cents(&state.db.pool, merchant_id)
+            .await
+            .map_err(|e| AppError::Internal(e.into()))?;
+    let pending = session_repo::pending_amount_cents(&state.db.pool, merchant_id)
+        .await
+        .map_err(|e| AppError::Internal(e.into()))?;
+
     Ok(Json(BalanceResponse {
         merchant_id,
-        available: 0,
-        pending: 0,
+        available,
+        pending,
         currency: "USD".into(),
     }))
 }
@@ -46,9 +57,9 @@ pub struct PaymentsQuery {
 
 pub async fn list_payments(
     State(state): State<AppState>,
+    Extension(AuthedMerchant(merchant_id)): Extension<AuthedMerchant>,
     Query(q): Query<PaymentsQuery>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let merchant_id: Uuid = DEMO_MERCHANT_ID.parse().unwrap();
     let limit = q.limit.unwrap_or(20);
     let offset = q.page.unwrap_or(0) * limit;
     let (transactions, _total) =
@@ -99,9 +110,9 @@ pub struct CreatePaymentLinkResponse {
 
 pub async fn create_payment_link(
     State(state): State<AppState>,
+    Extension(AuthedMerchant(merchant_id)): Extension<AuthedMerchant>,
     Json(req): Json<CreatePaymentLinkRequest>,
 ) -> Result<Json<CreatePaymentLinkResponse>, AppError> {
-    let merchant_id: Uuid = DEMO_MERCHANT_ID.parse().unwrap();
     let bank_id = "021000021";
 
     let bank =
@@ -127,7 +138,7 @@ pub async fn create_payment_link(
 
     let host = req
         .checkout_host
-        .unwrap_or_else(|| "http://localhost:8888".into());
+        .unwrap_or_else(|| state.config.public_app_url.clone());
     let checkout_url = format!("{}/pay/{}", host, id);
 
     Ok(Json(CreatePaymentLinkResponse {

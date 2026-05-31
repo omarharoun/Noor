@@ -1,0 +1,87 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE payment_attempts\n            SET provider_ref = COALESCE($2, provider_ref),\n                response_status = COALESCE($3, response_status),\n                response_body = COALESCE($4, response_body),\n                error_message = COALESCE($5, error_message),\n                status = $6,\n                updated_at = NOW()\n            WHERE id = $1\n            RETURNING id, session_id, rail as \"rail: paybank_core::PaymentRail\", provider_ref, request_payload, response_status, response_body, error_message, status, created_at, updated_at\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "session_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "rail: paybank_core::PaymentRail",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "provider_ref",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "request_payload",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 5,
+        "name": "response_status",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 6,
+        "name": "response_body",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 7,
+        "name": "error_message",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 8,
+        "name": "status",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 9,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 10,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Int4",
+        "Jsonb",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "057a5fa2134379070555c0295f1a052aa29d48819597654bb524f86474b664d0"
+}

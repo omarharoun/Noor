@@ -1,0 +1,64 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT id, name, routing_number, supports_fednow, supports_rtp, supports_wire, logo_url, display_order\n        FROM banks WHERE id = $1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "routing_number",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "supports_fednow",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 4,
+        "name": "supports_rtp",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 5,
+        "name": "supports_wire",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 6,
+        "name": "logo_url",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "display_order",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "fb295ec3f9870d912ad5157531a120fe2a016622821a96fa41902c35ed194b6a"
+}

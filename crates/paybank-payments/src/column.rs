@@ -145,6 +145,7 @@ pub async fn create_transfer(
     rail: &PaymentRail,
     amount_cents: i64,
     description: &str,
+    idempotency_key: &str,
 ) -> Result<TransferResponse, AppError> {
     let c = client()?;
 
@@ -164,19 +165,23 @@ pub async fn create_transfer(
 
     let resp = c
         .post(&format!("{}/transfers", COLUMN_BASE_URL))
+        .header("Idempotency-Key", idempotency_key)
         .json(&request)
         .send()
         .await
-        .map_err(|e| AppError::ColumnError(e.to_string()))?;
+        // Transport error → ambiguous outcome (transfer may exist server-side).
+        .map_err(|e| AppError::ProviderAmbiguous(format!("Column transfer send failed: {e}")))?;
 
     if !resp.status().is_success() {
         let status = resp.status();
         let body = resp.text().await.unwrap_or_default();
         warn!("Column transfer failed: HTTP {} - {}", status, body);
-        return Err(AppError::ColumnError(format!(
-            "Transfer failed: HTTP {} - {}",
-            status, body
-        )));
+        let msg = format!("Transfer failed: HTTP {} - {}", status, body);
+        return Err(if status.is_server_error() || status.as_u16() == 429 {
+            AppError::ProviderAmbiguous(msg)
+        } else {
+            AppError::ColumnError(msg)
+        });
     }
 
     let transfer: TransferResponse = resp

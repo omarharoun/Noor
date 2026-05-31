@@ -1,7 +1,25 @@
+# Build artifacts
 target/
-.git/
-node_modules/
+
+# Node dependencies (each stage installs its own)
+**/node_modules
+
+# VCS & CI metadata
+.git
+.github
+
+# Documentation
+docs
 *.md
-**.log
+
+# Secrets — never bake into image
 .env
+.env.*
+
+# NOTE: .sqlx/ is intentionally NOT ignored — the offline query cache is
+# required for `SQLX_OFFLINE=true cargo build` in the Rust builder stage.
+
+# Misc dev artifacts
 appsmith/
+drop_all.py
+run_migrations.py

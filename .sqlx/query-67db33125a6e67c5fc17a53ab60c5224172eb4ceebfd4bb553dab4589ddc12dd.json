@@ -1,0 +1,77 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO transactions\n           (id, session_id, merchant_id, amount_cents, rail_used, column_ref, reference, settled_at, created_at)\n           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())\n           RETURNING id, session_id, merchant_id, amount_cents, rail_used as \"rail_used: PaymentRail\", column_ref, reference, settled_at, created_at",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "session_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "merchant_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "amount_cents",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 4,
+        "name": "rail_used: PaymentRail",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "column_ref",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "reference",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "settled_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 8,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Int8",
+        "Text",
+        "Text",
+        "Text",
+        "Timestamptz"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "67db33125a6e67c5fc17a53ab60c5224172eb4ceebfd4bb553dab4589ddc12dd"
+}

@@ -3,423 +3,482 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Noor Dashboard</title>
+<title>Noor — Merchant dashboard</title>
 <style>
-:root{--mt-blue:#5469d4;--mt-blue-hover:#4054b2;--mt-bg:#f0f2f5;--card-shadow:0 1px 3px rgba(50,50,93,.08),0 1px 2px rgba(0,0,0,.06);--radius:8px}
+@import url('https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+:root{
+  --clay:#C96442;--clay-50:#FBF3EE;--clay-600:#B5512F;--clay-700:#97421F;
+  --brand:#C96442;--brand-soft:#FBF3EE;
+  --cream:#FAF9F5;--cream-deep:#F4F2EA;--manilla:#EFEADC;--surface:#FFFFFF;--surface-2:#FCFBF8;
+  --ink:#211F1A;--ink-2:#57534A;--ink-3:#8B857A;--ink-4:#B4AEA1;
+  --border:#E9E5DA;--border-strong:#DBD6C8;--border-ink:#C9C3B4;
+  --success:#3F6B34;--success-fill:#EAF1E1;--success-border:#CFE0BD;
+  --warning:#98671B;--warning-fill:#F7ECD6;--warning-border:#ECD8AE;
+  --info:#3E6486;--info-fill:#E5EDF3;--info-border:#C6D9E7;
+  --danger:#A8412A;--danger-fill:#F6E1D9;--danger-border:#E8C4B5;
+  --neutral:#5A5246;--neutral-fill:#EFEADD;--neutral-border:#DED6C5;
+  --r-xs:6px;--r-sm:8px;--r-md:12px;--r-lg:16px;--r-xl:20px;--r-pill:999px;
+  --shadow-xs:0 1px 2px rgba(40,33,24,.05);--shadow-sm:0 1px 2px rgba(40,33,24,.04),0 2px 6px rgba(40,33,24,.05);--shadow-md:0 2px 4px rgba(40,33,24,.04),0 8px 20px rgba(40,33,24,.07);
+  --ring:0 0 0 3px rgba(201,100,66,.18);
+  --font-serif:'Newsreader',Georgia,serif;--font-sans:'Hanken Grotesk',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;--font-mono:'JetBrains Mono',ui-monospace,Menlo,monospace;
+}
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--mt-bg);color:#1a1f36;font-size:14px;line-height:1.5}
-header{background:#fff;border-bottom:1px solid #e6ebf1;padding:0 24px;position:sticky;top:0;z-index:100}
-.header-inner{max-width:1200px;margin:0 auto;display:flex;align-items:center;height:56px;gap:32px}
-.header-inner h1{font-size:18px;font-weight:600;color:#1a1f36;white-space:nowrap}
-.header-inner h1 span{color:var(--mt-blue)}
-nav{display:flex;gap:4px;overflow-x:auto}
-nav a{padding:6px 14px;border-radius:6px;text-decoration:none;color:#5a6178;font-size:13px;font-weight:500;white-space:nowrap;transition:.15s;cursor:pointer}
-nav a:hover{color:#1a1f36;background:#f0f2f5}
-nav a.active{color:#fff;background:var(--mt-blue)}
-main{max-width:1200px;margin:24px auto;padding:0 24px}
-.section{display:none}
-.section.active{display:block}
-.card{background:#fff;border-radius:var(--radius);box-shadow:var(--card-shadow);margin-bottom:20px;overflow:hidden}
-.card-header{padding:16px 20px;border-bottom:1px solid #e6ebf1;display:flex;align-items:center;justify-content:space-between}
-.card-header h2{font-size:15px;font-weight:600;color:#1a1f36}
-.card-body{padding:20px}
-table{width:100%;border-collapse:collapse;font-size:13px}
-th{text-align:left;padding:10px 16px;font-weight:500;color:#5a6178;font-size:12px;text-transform:uppercase;letter-spacing:.5px;border-bottom:2px solid #e6ebf1}
-td{padding:12px 16px;border-bottom:1px solid #f0f2f5}
-tbody tr{cursor:pointer;transition:.1s}
-tbody tr:hover{background:#f8f9ff}
-tbody tr.selected{background:#eef0ff}
-input,select{width:100%;padding:9px 12px;border:1px solid #d9dde8;border-radius:6px;font-size:14px;color:#1a1f36;background:#fff;transition:.15s;margin-bottom:0}
-input:focus,select:focus{outline:none;border-color:var(--mt-blue);box-shadow:0 0 0 3px rgba(84,105,212,.15)}
+html,body{height:100%}
+body{font-family:var(--font-sans);background:var(--cream);color:var(--ink);font-size:14px;-webkit-font-smoothing:antialiased}
+.ic{display:inline-flex}.ic svg{display:block}
+a{color:inherit}
+.app{display:grid;grid-template-columns:236px 1fr;min-height:100vh}
+.sidebar{background:var(--surface);border-right:1px solid var(--border);padding:18px 14px;display:flex;flex-direction:column;gap:3px;position:sticky;top:0;height:100vh}
+.brand-row{display:flex;align-items:center;gap:10px;padding:6px 8px}
+.brand-glyph{width:34px;height:34px;border-radius:10px;background:var(--clay);position:relative;flex:none}
+.brand-name{font-family:var(--font-sans);font-size:15.5px;font-weight:700;letter-spacing:-.01em;line-height:1.1}
+.brand-plan{font-size:11px;color:var(--ink-3)}
+.brand-divider{height:1px;background:var(--border);margin:14px 4px}
+.nav-item{display:flex;align-items:center;gap:11px;padding:9px 11px;border-radius:var(--r-sm);font-size:13.5px;font-weight:500;color:var(--ink-2);cursor:pointer;transition:.14s;border:none;background:none;text-align:left;width:100%}
+.nav-item:hover{background:var(--cream-deep);color:var(--ink)}
+.nav-item.active{background:var(--brand-soft);color:var(--ink);font-weight:600}
+.nav-item.active .ic{color:var(--brand)}
+.nav-item .ic{color:var(--ink-3)}
+.sidebar-foot{margin-top:auto}
+.foot-user{display:flex;align-items:center;gap:10px;padding:9px;border-radius:var(--r-md)}
+.foot-user .nm{font-size:12.5px;font-weight:600;line-height:1.15}
+.foot-user .em{font-size:11px;color:var(--ink-3)}
+.avatar{border-radius:50%;background:var(--brand-soft);color:var(--brand);display:grid;place-items:center;font-weight:700;flex:none}
+.main{display:flex;flex-direction:column;min-width:0}
+.topbar{height:62px;display:flex;align-items:center;gap:14px;padding:0 30px;border-bottom:1px solid var(--border);background:var(--cream);position:sticky;top:0;z-index:20}
+.topbar h1{font-family:var(--font-serif);font-size:23px;font-weight:500;letter-spacing:-.01em}
+.spacer{flex:1}
+.icon-btn{width:36px;height:36px;display:grid;place-items:center;border-radius:var(--r-sm);border:1px solid var(--border-strong);background:var(--surface);color:var(--ink-2);cursor:pointer}
+.icon-btn:hover{background:var(--cream-deep)}
+.content{padding:28px 30px;max-width:1160px;width:100%;margin:0 auto}
+.intro{color:var(--ink-3);font-size:13.5px;margin:-2px 0 22px}
+.section{display:none}.section.active{display:block}
+/* buttons */
+.mbtn{display:inline-flex;align-items:center;gap:7px;font-family:var(--font-sans);font-weight:600;border-radius:var(--r-sm);border:1px solid transparent;cursor:pointer;transition:.15s;line-height:1;white-space:nowrap}
+.mbtn-md{font-size:13.5px;padding:9px 16px}.mbtn-sm{font-size:12.5px;padding:7px 12px}
+.mbtn-primary{background:var(--brand);color:#fff}.mbtn-primary:hover{filter:brightness(1.07)}
+.mbtn-secondary{background:var(--surface);color:var(--ink);border-color:var(--border-strong);box-shadow:var(--shadow-xs)}.mbtn-secondary:hover{background:var(--cream-deep)}
+.mbtn-success{background:var(--success);color:#fff}
+.mbtn-ghost{background:transparent;color:var(--ink-2)}.mbtn-ghost:hover{background:var(--cream-deep)}
+.mbtn:disabled{opacity:.5;cursor:default}
+.mbtn-pulse{animation:ctapulse 2s infinite}
+@keyframes ctapulse{0%{box-shadow:0 0 0 0 rgba(63,107,52,.4)}70%{box-shadow:0 0 0 8px rgba(63,107,52,0)}100%{box-shadow:0 0 0 0 rgba(63,107,52,0)}}
+/* badges */
+.mbadge{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:var(--r-pill);font-size:11.5px;font-weight:600;border:1px solid transparent;white-space:nowrap}
+.mbadge-dot{width:6px;height:6px;border-radius:50%;background:currentColor}
+.tone-success{background:var(--success-fill);color:var(--success);border-color:var(--success-border)}
+.tone-warning{background:var(--warning-fill);color:var(--warning);border-color:var(--warning-border)}
+.tone-info{background:var(--info-fill);color:var(--info);border-color:var(--info-border)}
+.tone-danger{background:var(--danger-fill);color:var(--danger);border-color:var(--danger-border)}
+.tone-neutral{background:var(--neutral-fill);color:var(--neutral);border-color:var(--neutral-border)}
+.rail-tag{font-family:var(--font-mono);font-size:10.5px;font-weight:700;color:var(--ink-2);background:var(--cream-deep);border:1px solid var(--border);border-radius:var(--r-xs);padding:2px 7px}
+.live-badge{display:inline-flex;align-items:center;gap:5px;margin-left:10px;font-size:11px;font-weight:600;color:var(--success);background:var(--success-fill);border-radius:var(--r-pill);padding:2px 9px}
+.live-dot{width:6px;height:6px;border-radius:50%;background:var(--success);animation:blink 1.6s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+/* cards */
+.mcard{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);box-shadow:var(--shadow-sm);overflow:hidden;margin-bottom:16px}
+.mcard-head{display:flex;align-items:center;justify-content:space-between;padding:15px 20px;border-bottom:1px solid var(--border)}
+.mcard-title{font-size:14.5px;font-weight:600;white-space:nowrap;display:flex;align-items:center}
+.mcard-body{padding:20px}
+/* balance hero */
+.balance-hero{display:grid;grid-template-columns:1.3fr 1fr;gap:16px;margin-bottom:16px}
+.balance-card{background:var(--brand);border-radius:var(--r-lg);padding:24px;color:#fff;box-shadow:var(--shadow-sm)}
+.balance-card .bk-label{font-size:11.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;opacity:.85}
+.balance-card .bk-amount{font-family:var(--font-serif);font-size:44px;font-weight:500;letter-spacing:-.01em;font-variant-numeric:tabular-nums;margin-top:6px}
+.balance-card .bk-row{display:flex;gap:26px;margin-top:18px}
+.balance-card .bk-sub-l{font-size:11px;opacity:.8;text-transform:uppercase;letter-spacing:.04em}
+.balance-card .bk-sub-v{font-size:16px;font-weight:600;margin-top:2px;font-variant-numeric:tabular-nums}
+.balance-card .bk-actions{display:flex;gap:8px;margin-top:22px}
+.bk-btn{display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.28);color:#fff;font-size:12.5px;font-weight:600;padding:8px 13px;border-radius:var(--r-sm);cursor:pointer}
+.bk-btn:hover{background:rgba(255,255,255,.26)}
+.mini-stats{display:grid;grid-template-rows:1fr 1fr;gap:16px}
+.mini-stat{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);box-shadow:var(--shadow-sm);padding:16px 18px;display:flex;align-items:center;gap:14px}
+.mini-stat .ms-ico{width:34px;height:34px;border-radius:var(--r-sm);display:grid;place-items:center;background:var(--brand-soft);flex:none}
+.mini-stat .ms-label{font-size:11.5px;color:var(--ink-3);font-weight:500}
+.mini-stat .ms-value{font-family:var(--font-serif);font-size:23px;font-weight:500;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+/* tables */
+.tbl-wrap{width:100%;overflow-x:auto}
+table.mtbl{width:100%;border-collapse:collapse;font-size:13px}
+.mtbl th{text-align:left;padding:10px 18px;font-size:10px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-3);background:var(--surface-2);border-bottom:1px solid var(--border);white-space:nowrap}
+.mtbl td{padding:13px 18px;border-bottom:1px solid var(--border);color:var(--ink-2);vertical-align:middle}
+.mtbl tbody tr:last-child td{border-bottom:none}
+.mtbl tbody tr{cursor:pointer;transition:.1s}
+.mtbl tbody tr:hover td{background:var(--cream)}
+.mtbl tbody tr.sel td{background:var(--cream-deep)}
+.cell-id{font-family:var(--font-mono);font-size:11.5px;color:var(--ink-3)}
+.cell-amt{font-family:var(--font-mono);font-weight:600;color:var(--ink)}
+.cell-strong{font-weight:600;color:var(--ink)}
+.cell-muted{color:var(--ink-3)}
+.cell-name{display:flex;align-items:center;gap:10px}
+/* filters */
+.filterbar{display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap}
+/* forms */
+.field{margin-bottom:16px}
+.field label{display:block;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-3);margin-bottom:6px}
+.field input,.field select{width:100%;padding:10px 13px;border:1px solid var(--border-strong);border-radius:var(--r-sm);font-size:14px;font-family:var(--font-sans);color:var(--ink);background:var(--surface);transition:.15s}
+.field input:focus,.field select:focus{outline:none;border-color:var(--clay);box-shadow:var(--ring)}
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-.form-group{margin-bottom:16px}
-.form-group label{display:block;font-size:12px;font-weight:500;color:#5a6178;margin-bottom:4px;text-transform:uppercase;letter-spacing:.3px}
 .form-actions{display:flex;gap:8px;margin-top:8px}
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:9px 20px;border:none;border-radius:6px;font-size:14px;font-weight:500;cursor:pointer;transition:.15s;text-decoration:none;line-height:1.4}
-.btn-primary{background:var(--mt-blue);color:#fff}
-.btn-primary:hover{background:var(--mt-blue-hover)}
-.btn-secondary{background:#f0f2f5;color:#1a1f36}
-.btn-secondary:hover{background:#e6ebf1}
-.btn-danger{background:#dc3545;color:#fff}
-.btn-danger:hover{background:#c82333}
-.btn-success{background:#2e7d32;color:#fff}
-.btn-success:hover{background:#1b5e20}
-.pulse-btn{animation:pulse 2s infinite}
-@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(46,125,50,.4)}70%{box-shadow:0 0 0 8px rgba(46,125,50,0)}100%{box-shadow:0 0 0 0 rgba(46,125,50,0)}}
-.btn-sm{padding:6px 14px;font-size:12px}
-.btn:disabled{opacity:.5;cursor:default}
-.badge{display:inline-block;padding:2px 10px;border-radius:100px;font-size:11px;font-weight:600}
-.badge-pending{background:#fff4e5;color:#b76e00}
-.badge-processing{background:#e3f2fd;color:#1565c0}
-.badge-completed{background:#e8f5e9;color:#2e7d32}
-.badge-expired{background:#fce4ec;color:#c62828}
-.badge-authorized{background:#e8eaf6;color:#283593}
-pre{background:#f8f9ff;border:1px solid #e6ebf1;border-radius:6px;padding:12px;overflow:auto;font-size:12px;max-height:200px;margin:8px 0}
-#qrcode{text-align:center;padding:8px}
-#qrcode svg{max-width:160px;border:1px solid #e6ebf1;border-radius:8px;padding:8px;background:#fff}
-#qrcode img{max-width:160px}
-.error{color:#c62828;background:#fce4ec;padding:10px 14px;border-radius:6px;margin:8px 0;font-size:13px}
-.success{color:#2e7d32;background:#e8f5e9;padding:10px 14px;border-radius:6px;margin:8px 0;font-size:13px}
-.info{color:#1565c0;background:#e3f2fd;padding:10px 14px;border-radius:6px;margin:8px 0;font-size:13px}
-.empty{text-align:center;padding:40px 20px;color:#8a94a6}
-.empty p{font-size:14px;margin-top:4px}
-.glance{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:20px}
-.stat{padding:16px;border-radius:var(--radius);background:#fff;border:1px solid #e6ebf1}
-.stat-label{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:#8a94a6;font-weight:600}
-.stat-value{font-size:24px;font-weight:700;color:#1a1f36;margin-top:4px}
-.detail-grid{display:grid;grid-template-columns:auto 1fr;gap:8px 24px;font-size:13px;margin:8px 0}
-.detail-grid dt{color:#5a6178;font-weight:500}
-.detail-grid dd{margin:0}
-.spinner{display:inline-block;width:16px;height:16px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite}
-.spinner-dark{border-color:rgba(0,0,0,.1);border-top-color:var(--mt-blue)}
+/* detail */
+.detail{display:grid;grid-template-columns:1.4fr 1fr;gap:28px}
+.dgrid{display:grid;grid-template-columns:auto 1fr;gap:11px 22px;align-items:center;font-size:13px}
+.dgrid dt{color:var(--ink-3);font-weight:500}
+.dgrid dd{color:var(--ink);margin:0}
+.qr-well{background:var(--cream);border:1px solid var(--border);border-radius:var(--r-md);padding:14px;display:grid;place-items:center;overflow:hidden}
+.qr-well svg,.qr-well img{width:140px;height:140px}
+.paylink{font-family:var(--font-mono);font-size:11px;color:var(--ink-3);margin-top:10px;word-break:break-all;text-align:center}
+/* misc */
+.flash{display:flex;align-items:center;gap:8px;padding:11px 14px;border-radius:var(--r-md);font-size:13px;font-weight:500;margin-bottom:14px}
+.flash.success{background:var(--success-fill);color:var(--success);border:1px solid var(--success-border)}
+.flash.info{background:var(--info-fill);color:var(--info);border:1px solid var(--info-border)}
+.flash.error{background:var(--danger-fill);color:var(--danger);border:1px solid var(--danger-border)}
+.empty{text-align:center;padding:40px 20px;color:var(--ink-3)}
+.spinner{display:inline-block;width:24px;height:24px;border:2px solid var(--border-strong);border-top-color:var(--clay);border-radius:50%;animation:spin .7s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
-.live-badge{display:inline-flex;align-items:center;gap:4px;padding:2px 10px;border-radius:100px;font-size:11px;font-weight:600;background:#e8f5e9;color:#2e7d32}
-.live-badge::before{content:'';width:6px;height:6px;border-radius:50%;background:#2e7d32;animation:pulse 2s infinite}
-@keyframes pulse{0%{opacity:1}50%{opacity:.4}100%{opacity:1}}
-.tabs{display:flex;gap:0;border-bottom:1px solid #e6ebf1;margin-bottom:0}
-.tab{padding:10px 20px;font-size:13px;font-weight:500;color:#5a6178;cursor:pointer;border-bottom:2px solid transparent;transition:.15s}
-.tab:hover{color:#1a1f36}
-.tab.active{color:var(--mt-blue);border-bottom-color:var(--mt-blue)}
-.tab-content{display:none;padding:20px}
-.tab-content.active{display:block}
-@media(max-width:768px){.form-row{grid-template-columns:1fr}.header-inner{flex-wrap:wrap;height:auto;padding:12px 0}.glance{grid-template-columns:1fr 1fr}}
+pre{background:var(--cream-deep);border:1px solid var(--border);border-radius:var(--r-sm);padding:12px;overflow:auto;font-size:12px;font-family:var(--font-mono);max-height:220px;margin:8px 0;color:var(--ink-2)}
+@media(max-width:940px){.app{grid-template-columns:1fr}.sidebar{display:none}.balance-hero{grid-template-columns:1fr}.detail,.form-row{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
-<header>
-<div class="header-inner">
-<h1>Noor</h1>
-<nav>
-<a class="active" data-tab="overview">Overview</a>
-<a data-tab="sessions">Sessions</a>
-<a data-tab="create">New Session</a>
-<a data-tab="transactions">Transactions</a>
-<a data-tab="plaid">Plaid</a>
-</nav>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand-row">
+      <span class="brand-glyph"><svg viewBox="0 0 34 34" style="position:absolute;inset:0"><path d="M23 9.5a9 9 0 1 0 0 15 7 7 0 1 1 0-15Z" fill="var(--cream)"/></svg></span>
+      <div><div class="brand-name">Noor</div><div class="brand-plan">Business</div></div>
+    </div>
+    <div class="brand-divider"></div>
+    <button class="nav-item active" data-tab="overview"><i data-lucide="layout-dashboard"></i>Overview</button>
+    <button class="nav-item" data-tab="sessions"><i data-lucide="arrow-left-right"></i>Sessions</button>
+    <button class="nav-item" data-tab="create"><i data-lucide="plus-circle"></i>New session</button>
+    <button class="nav-item" data-tab="transactions"><i data-lucide="receipt"></i>Transactions</button>
+    <button class="nav-item" data-tab="plaid"><i data-lucide="link"></i>Plaid</button>
+    <div class="sidebar-foot">
+      <div class="brand-divider"></div>
+      <div class="foot-user"><span class="avatar" style="width:32px;height:32px;font-size:12px">MQ</span><div><div class="nm">Mara Quinn</div><div class="em">Operations</div></div></div>
+    </div>
+  </aside>
+  <div class="main">
+    <header class="topbar">
+      <h1 id="page-title">Overview</h1>
+      <div class="spacer"></div>
+      <button class="mbtn mbtn-primary mbtn-sm" onclick="switchTab('create')"><i data-lucide="plus" style="width:14px;height:14px"></i>New session</button>
+      <button class="icon-btn"><i data-lucide="bell" style="width:17px;height:17px"></i></button>
+    </header>
+    <div class="content">
+      <p class="intro" id="page-intro">Your balance, volume and recent activity.</p>
+      <div id="section-overview" class="section active"></div>
+      <div id="section-sessions" class="section"></div>
+      <div id="section-create" class="section"></div>
+      <div id="section-transactions" class="section"></div>
+      <div id="section-plaid" class="section"></div>
+    </div>
+  </div>
 </div>
-</header>
-<main>
-<div id="section-overview" class="section active"></div>
-<div id="section-sessions" class="section"></div>
-<div id="section-create" class="section"></div>
-<div id="section-transactions" class="section"></div>
-<div id="section-plaid" class="section"></div>
-</main>
 
+<script src="https://unpkg.com/lucide@0.456.0/dist/umd/lucide.min.js"></script>
 <script>
 const API = '';
 const MERCHANT_ID = '00000000-0000-0000-0000-000000000001';
 let selectedSessionId = null;
 
+const TITLES = {
+  overview: ['Overview', 'Your balance, volume and recent activity.'],
+  sessions: ['Sessions', 'Every payment session and its lifecycle.'],
+  create: ['New session', 'Create a payment session to share with a customer.'],
+  transactions: ['Transactions', 'Settled transfers across your rails.'],
+  plaid: ['Plaid', 'Link bank accounts and exchange public tokens.'],
+};
+const TONE = { pending:'warning', authorized:'neutral', processing:'info', completed:'success', expired:'danger' };
+const LABEL = { pending:'Pending', authorized:'Authorized', processing:'Processing', completed:'Completed', expired:'Expired' };
+const fmt = (c) => '$' + (c/100).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+const fmtCompact = (c) => { const d=c/100; return d>=1000 ? '$'+(d/1000).toFixed(d>=10000?0:1)+'k' : '$'+d.toFixed(0); };
+const badge = (s) => `<span class="mbadge tone-${TONE[s]||'neutral'}"><span class="mbadge-dot"></span>${LABEL[s]||s}</span>`;
+const icons = () => { if (window.lucide) lucide.createIcons({ attrs: { 'stroke-width': 1.75 } }); };
+
 async function api(path, opts = {}) {
   const res = await fetch(API + path, { headers: { 'Content-Type': 'application/json', ...opts.headers }, ...opts });
-  if (!res.ok) { const text = await res.text(); let msg = text; try{const j=JSON.parse(text);msg=j.error||j.message||text}catch{} throw new Error(msg); }
+  if (!res.ok) { const t = await res.text(); let m=t; try{const j=JSON.parse(t);m=j.error||j.message||t}catch{} throw new Error(m); }
   return res.json();
 }
 
-document.querySelectorAll('nav a').forEach(a => {
+document.querySelectorAll('.nav-item').forEach(a => {
   a.addEventListener('click', () => {
-    document.querySelectorAll('nav a').forEach(x => x.classList.remove('active'));
+    document.querySelectorAll('.nav-item').forEach(x => x.classList.remove('active'));
     document.querySelectorAll('.section').forEach(x => x.classList.remove('active'));
     a.classList.add('active');
-    document.getElementById('section-'+a.dataset.tab).classList.add('active');
+    const tab = a.dataset.tab;
+    document.getElementById('section-' + tab).classList.add('active');
+    const [t, i] = TITLES[tab];
+    document.getElementById('page-title').textContent = t;
+    document.getElementById('page-intro').textContent = i;
+    if (tab === 'sessions') loadSessions();
+    if (tab === 'transactions') loadTransactions();
   });
 });
+function switchTab(name) { document.querySelector(`.nav-item[data-tab="${name}"]`)?.click(); }
 
-// ==================== OVERVIEW ====================
+/* ==================== OVERVIEW ==================== */
 async function loadOverview() {
   const el = document.getElementById('section-overview');
-  el.innerHTML = `<div class="card"><div class="card-body"><div class="glance">
-    <div class="stat"><div class="stat-label">Balance</div><div class="stat-value">—</div></div>
-    <div class="stat"><div class="stat-label">Pending</div><div class="stat-value" id="ov-pending">0</div></div>
-    <div class="stat"><div class="stat-label">Completed</div><div class="stat-value" id="ov-completed">0</div></div>
-    <div class="stat"><div class="stat-label">Banks</div><div class="stat-value" id="ov-banks">0</div></div>
-  </div></div></div>
-  <div class="card"><div class="card-header"><h2>Recent Activity</h2></div><div class="card-body" id="ov-activity"><p class="info">Loading...</p></div></div>`;
-
+  el.innerHTML = `
+    <div class="balance-hero">
+      <div class="balance-card">
+        <div class="bk-label">Available balance</div>
+        <div class="bk-amount" id="ov-balance">—</div>
+        <div class="bk-row">
+          <div><div class="bk-sub-l">Pending</div><div class="bk-sub-v" id="ov-pending-bal">—</div></div>
+          <div><div class="bk-sub-l">Currency</div><div class="bk-sub-v">USD</div></div>
+        </div>
+        <div class="bk-actions">
+          <button class="bk-btn" onclick="switchTab('create')"><i data-lucide="plus" style="width:14px;height:14px"></i>New session</button>
+          <button class="bk-btn" onclick="switchTab('transactions')"><i data-lucide="receipt" style="width:14px;height:14px"></i>Transactions</button>
+        </div>
+      </div>
+      <div class="mini-stats">
+        <div class="mini-stat"><div class="ms-ico"><i data-lucide="check-circle-2" style="width:17px;height:17px;color:var(--brand)"></i></div><div><div class="ms-label">Completed transfers</div><div class="ms-value" id="ov-completed">0</div></div></div>
+        <div class="mini-stat"><div class="ms-ico"><i data-lucide="landmark" style="width:17px;height:17px;color:var(--brand)"></i></div><div><div class="ms-label">Banks supported</div><div class="ms-value" id="ov-banks">0</div></div></div>
+      </div>
+    </div>
+    <div class="mcard"><div class="mcard-head"><h2 class="mcard-title">Recent activity<span class="live-badge"><span class="live-dot"></span>Live</span></h2></div>
+      <div id="ov-activity"><div class="empty"><div class="spinner"></div></div></div></div>`;
+  icons();
   try {
-    const [banks, txData] = await Promise.all([
+    const [banks, txData, bal] = await Promise.all([
       api('/api/banks'),
-      api(`/api/transactions?merchant_id=${MERCHANT_ID}&limit=10&offset=0`)
+      api(`/api/transactions?merchant_id=${MERCHANT_ID}&limit=10&offset=0`),
+      api(`/api/merchant-api/balances/${MERCHANT_ID}`).catch(() => ({ available: 0, pending: 0 })),
     ]);
     document.getElementById('ov-banks').textContent = banks.banks.length;
+    document.getElementById('ov-balance').textContent = fmt(bal.available || 0);
+    document.getElementById('ov-pending-bal').textContent = fmt(bal.pending || 0);
     const txns = txData.transactions || [];
-    const completed = txns.filter(t => t.settled_at).length;
-    document.getElementById('ov-completed').textContent = completed;
-    document.getElementById('ov-pending').textContent = txns.length - completed;
-
+    document.getElementById('ov-completed').textContent = txns.filter(t => t.settled_at).length;
+    const act = document.getElementById('ov-activity');
     if (txns.length) {
-      document.getElementById('ov-activity').innerHTML = `<table><thead><tr><th>Amount</th><th>Rail</th><th>Reference</th><th>Status</th><th>Date</th></tr></thead>
-      <tbody>${txns.map(t => `<tr onclick="switchTab('sessions')">
-        <td><strong>$${(t.amount_cents/100).toFixed(2)}</strong></td>
-        <td><span class="badge badge-processing">${t.rail_used}</span></td>
-        <td style="font-family:monospace;font-size:11px">${(t.reference||'').slice(0,12)}</td>
-        <td><span class="badge ${t.settled_at?'badge-completed':'badge-pending'}">${t.settled_at?'Settled':'Pending'}</span></td>
-        <td style="font-size:11px">${t.settled_at?new Date(t.settled_at).toLocaleDateString():'—'}</td>
-      </tr>`).join('')}</tbody></table>`;
+      act.innerHTML = `<div class="tbl-wrap"><table class="mtbl"><thead><tr><th>Amount</th><th>Rail</th><th>Reference</th><th>Settlement</th><th>Date</th></tr></thead><tbody>
+        ${txns.map(t => `<tr>
+          <td class="cell-amt">${fmt(t.amount_cents)}</td>
+          <td><span class="rail-tag">${(t.rail_used||'—').toUpperCase()}</span></td>
+          <td class="cell-id">${(t.reference||'').slice(0,14)}</td>
+          <td>${t.settled_at ? '<span class="mbadge tone-success">Settled</span>' : '<span class="mbadge tone-neutral">Open</span>'}</td>
+          <td class="cell-muted">${t.settled_at ? new Date(t.settled_at).toLocaleDateString() : '—'}</td>
+        </tr>`).join('')}</tbody></table></div>`;
     } else {
-      document.getElementById('ov-activity').innerHTML = `<div class="empty"><p>No transactions yet. Create a session to get started.</p></div>`;
+      act.innerHTML = `<div class="empty">No transactions yet. Create a session to get started.</div>`;
     }
-  } catch(e) { document.getElementById('ov-activity').innerHTML = `<div class="error">${e.message}</div>`; }
+  } catch(e) { document.getElementById('ov-activity').innerHTML = `<div class="mcard-body"><div class="flash error">${e.message}</div></div>`; }
 }
-loadOverview();
 
-// ==================== SESSIONS ====================
+/* ==================== SESSIONS ==================== */
 async function loadSessions() {
   const el = document.getElementById('section-sessions');
-  el.innerHTML = `<div class="card"><div class="card-header"><h2>Sessions Ledger</h2><span class="live-badge">Live</span></div>
-    <div class="card-body" id="sessions-list"><div class="empty"><div class="spinner spinner-dark" style="margin:0 auto 8px"></div><p>Loading sessions...</p></div></div></div>
-    <div id="session-detail" class="${selectedSessionId?'':'hidden'}"></div>`;
+  el.innerHTML = `<div class="mcard"><div class="mcard-head"><h2 class="mcard-title">Sessions ledger<span class="live-badge"><span class="live-dot"></span>Live</span></h2></div>
+    <div id="sessions-list"><div class="empty"><div class="spinner"></div></div></div></div>
+    <div id="session-detail"></div>`;
   try {
     const txData = await api(`/api/transactions?merchant_id=${MERCHANT_ID}&limit=100&offset=0`);
     const txns = txData.transactions || [];
     const sessionIds = [...new Set(txns.map(t => t.session_id).filter(Boolean))];
     let sessions = [];
-    for (const sid of sessionIds.slice(0,20)) {
-      try { sessions.push(await api('/api/sessions/'+sid)); } catch {}
-    }
-    if (!sessions.length) {
-      document.getElementById('sessions-list').innerHTML = '<div class="empty"><p>No sessions found. Create one to start accepting payments.</p></div>';
-      return;
-    }
-    const rows = sessions.map(s => {
-      const txn = txns.find(t => t.session_id === s.id);
-      return `<tr onclick="selectSession('${s.id}')" class="${selectedSessionId===s.id?'selected':''}">
-        <td style="font-family:monospace;font-size:11px">${s.id.slice(0,8)}…</td>
-        <td><strong>$${(s.amount_cents/100).toFixed(2)}</strong></td>
-        <td><span class="badge badge-${s.status}">${s.status}</span></td>
-        <td>${s.rail_used||'—'}</td>
-        <td style="font-size:11px">${new Date(s.created_at).toLocaleDateString()}</td>
-        <td>${txn?'<span class="badge badge-completed">Settled</span>':'<span class="badge badge-pending">Open</span>'}</td>
-      </tr>`;
-    }).join('');
-    document.getElementById('sessions-list').innerHTML = `<table><thead><tr><th>Session</th><th>Amount</th><th>Status</th><th>Rail</th><th>Date</th><th>Settlement</th></tr></thead><tbody>${rows}</tbody></table>`;
-  } catch(e) { document.getElementById('sessions-list').innerHTML = `<div class="error">${e.message}</div>`; }
+    for (const sid of sessionIds.slice(0,20)) { try { sessions.push(await api('/api/sessions/' + sid)); } catch {} }
+    const list = document.getElementById('sessions-list');
+    if (!sessions.length) { list.innerHTML = '<div class="empty">No sessions found. Create one to start accepting payments.</div>'; return; }
+    list.innerHTML = `<div class="tbl-wrap"><table class="mtbl"><thead><tr><th>Session</th><th>Amount</th><th>Status</th><th>Rail</th><th>Created</th><th>Settlement</th></tr></thead><tbody>
+      ${sessions.map(s => { const txn = txns.find(t => t.session_id === s.id); return `<tr onclick="selectSession('${s.id}')" class="${selectedSessionId===s.id?'sel':''}">
+        <td class="cell-id">${s.id.slice(0,8)}…</td>
+        <td class="cell-amt">${fmt(s.amount_cents)}</td>
+        <td>${badge(s.status)}</td>
+        <td><span class="rail-tag">${(s.rail_used||'—').toUpperCase()}</span></td>
+        <td class="cell-muted">${new Date(s.created_at).toLocaleDateString()}</td>
+        <td>${txn ? '<span class="mbadge tone-success">Settled</span>' : '<span class="mbadge tone-neutral">Open</span>'}</td>
+      </tr>`; }).join('')}</tbody></table></div>`;
+    if (selectedSessionId) selectSession(selectedSessionId);
+  } catch(e) { document.getElementById('sessions-list').innerHTML = `<div class="mcard-body"><div class="flash error">${e.message}</div></div>`; }
 }
 
 async function selectSession(id) {
   selectedSessionId = id;
-  document.querySelectorAll('#section-sessions table tbody tr').forEach(r => r.classList.remove('selected'));
-  document.querySelector('#section-sessions table tbody tr[onclick*="'+id+'"]')?.classList.add('selected');
-  document.getElementById('session-detail').classList.remove('hidden');
+  document.querySelectorAll('#section-sessions .mtbl tbody tr').forEach(r => r.classList.remove('sel'));
+  document.querySelector(`#section-sessions .mtbl tbody tr[onclick*="${id}"]`)?.classList.add('sel');
   const el = document.getElementById('session-detail');
+  el.innerHTML = '<div class="mcard"><div class="mcard-body"><div class="empty"><div class="spinner"></div></div></div></div>';
   try {
-    const s = await api('/api/sessions/'+id);
+    const s = await api('/api/sessions/' + id);
     const hasBank = s.customer_account_number && s.customer_account_number.length > 0;
-    const cpParts = (s.column_counterparty_id || '').split('|');
-    const cpId = cpParts[0] || '';
-    const extAcctId = cpParts[1] || '';
-
+    const cp = (s.column_counterparty_id || '').split('|');
     const btns = [];
     if (s.status === 'pending') {
-      if (!hasBank) {
-        btns.push(`<button class="btn btn-secondary btn-sm" onclick="plaidForSession('${id}')">Link Bank (Plaid)</button>`);
-      } else {
-        btns.push(`<button class="btn btn-primary btn-sm" onclick="confirmSession('${id}')">Confirm</button>`);
-        btns.push(`<button class="btn btn-secondary btn-sm" onclick="plaidForSession('${id}')">Change Bank</button>`);
-      }
+      if (!hasBank) btns.push(`<button class="mbtn mbtn-secondary mbtn-sm" onclick="plaidForSession('${id}')"><i data-lucide="link" style="width:14px;height:14px"></i>Link bank</button>`);
+      else { btns.push(`<button class="mbtn mbtn-primary mbtn-sm" onclick="confirmSession('${id}')"><i data-lucide="check" style="width:14px;height:14px"></i>Confirm</button>`);
+              btns.push(`<button class="mbtn mbtn-secondary mbtn-sm" onclick="plaidForSession('${id}')">Change bank</button>`); }
     }
-    if (s.status === 'authorized') {
-      btns.push(`<button class="btn btn-success btn-sm pulse-btn" onclick="initPayment('${id}')">Initiate Transfer</button>`);
-    }
-    if (s.status === 'completed' || s.status === 'expired') {
-      btns.push(`<a href="/invoice/${id}" class="btn btn-secondary btn-sm" target="_blank">View Invoice</a>`);
-    }
-    if (s.status === 'pending') {
-      btns.push(`<a href="/pay/${id}" class="btn btn-secondary btn-sm" target="_blank">Pay Page</a>`);
-    }
+    if (s.status === 'authorized') btns.push(`<button class="mbtn mbtn-success mbtn-sm mbtn-pulse" onclick="initPayment('${id}')"><i data-lucide="zap" style="width:14px;height:14px"></i>Initiate transfer</button>`);
+    if (s.status === 'completed' || s.status === 'expired') btns.push(`<a class="mbtn mbtn-secondary mbtn-sm" href="/invoice/${id}" target="_blank"><i data-lucide="receipt" style="width:14px;height:14px"></i>Invoice</a>`);
+    btns.push(`<a class="mbtn mbtn-secondary mbtn-sm" href="/pay/${id}" target="_blank"><i data-lucide="external-link" style="width:14px;height:14px"></i>Pay page</a>`);
 
-    el.innerHTML = `<div class="card"><div class="card-header"><h2>Session ${s.id.slice(0,8)}…</h2><div style="display:flex;gap:8px;flex-wrap:wrap">${btns.join('')}</div></div>
-    <div class="card-body"><div style="display:flex;gap:32px;flex-wrap:wrap">
-      <div style="flex:1;min-width:280px">
-        <div class="detail-grid">
-          <dt>Status</dt><dd><span class="badge badge-${s.status}">${s.status.toUpperCase()}</span></dd>
-          <dt>Amount</dt><dd><strong>$${(s.amount_cents/100).toFixed(2)}</strong> ${s.currency}</dd>
-          <dt>Rail</dt><dd>${s.rail_used||'<span style="color:#8a94a6">Not assigned</span>'}</dd>
+    el.innerHTML = `<div class="mcard"><div class="mcard-head"><h2 class="mcard-title">Session ${s.id.slice(0,8)}…</h2><div style="display:flex;gap:8px;flex-wrap:wrap">${btns.join('')}</div></div>
+      <div class="mcard-body"><div id="detail-flash"></div><div class="detail">
+        <div><dl class="dgrid">
+          <dt>Status</dt><dd>${badge(s.status)}</dd>
+          <dt>Amount</dt><dd><span style="font-family:var(--font-serif);font-size:22px;font-weight:500">${fmt(s.amount_cents)}</span> <span class="cell-muted">${s.currency}</span></dd>
+          <dt>Rail</dt><dd><span class="rail-tag">${(s.rail_used||'—').toUpperCase()}</span></dd>
           <dt>Bank</dt><dd>${s.bank_id}</dd>
-          <dt>Created</dt><dd>${new Date(s.created_at).toLocaleString()}</dd>
-          <dt>Expires</dt><dd>${new Date(s.expires_at).toLocaleString()}</dd>
-          ${s.note?`<dt>Note</dt><dd>${s.note}</dd>`:''}
           ${s.customer_name?`<dt>Customer</dt><dd>${s.customer_name}${s.customer_email?' · '+s.customer_email:''}</dd>`:''}
-          ${hasBank?`<dt>Bank Linked</dt><dd><span class="badge badge-completed">Yes (${s.customer_account_type})</span></dd>`:''}
-          ${cpId?`<dt>MT Counterparty</dt><dd style="font-family:monospace;font-size:11px">${cpId}</dd>`:''}
-          ${extAcctId?`<dt>MT Ext Account</dt><dd style="font-family:monospace;font-size:11px">${extAcctId}</dd>`:''}
-          ${s.column_ref?`<dt>MT Payment Order</dt><dd style="font-family:monospace;font-size:11px"><a href="https://app.moderntreasury.com/payment-orders/${s.column_ref}" target="_blank">${s.column_ref}</a></dd>`:''}
+          ${hasBank?`<dt>Bank linked</dt><dd><span class="mbadge tone-success">Yes · ${s.customer_account_type||''}</span></dd>`:''}
+          ${s.note?`<dt>Note</dt><dd>${s.note}</dd>`:''}
+          ${cp[0]?`<dt>MT counterparty</dt><dd class="cell-id">${cp[0]}</dd>`:''}
+          ${cp[1]?`<dt>MT ext. account</dt><dd class="cell-id">${cp[1]}</dd>`:''}
+          ${s.column_ref?`<dt>MT payment order</dt><dd class="cell-id"><a href="https://app.moderntreasury.com/payment-orders/${s.column_ref}" target="_blank">${s.column_ref}</a></dd>`:''}
+          <dt>Created</dt><dd class="cell-muted">${new Date(s.created_at).toLocaleString()}</dd>
+          <dt>Expires</dt><dd class="cell-muted">${new Date(s.expires_at).toLocaleString()}</dd>
+        </dl></div>
+        <div style="text-align:center">
+          <div class="qr-well" id="qrcode-${id}"><div class="spinner"></div></div>
+          <div class="paylink">${window.location.origin}/pay/${id}</div>
         </div>
-      </div>
-      <div style="text-align:center;min-width:180px">
-        <div id="qrcode-${id}"><div class="spinner spinner-dark" style="margin:20px auto"></div></div>
-        <p style="font-size:11px;color:#8a94a6;margin-top:8px;word-break:break-all">${window.location.origin}/pay/${id}</p>
-      </div>
-    </div></div></div>`;
-    fetch(API+'/api/sessions/'+id+'/qr').then(r=>r.text()).then(svg=>{const q=document.getElementById('qrcode-'+id);if(q)q.innerHTML=svg}).catch(()=>{});
-  } catch(e) { el.innerHTML = `<div class="card"><div class="card-body error">${e.message}</div></div>`; }
+      </div></div></div>`;
+    icons();
+    fetch(API + '/api/sessions/' + id + '/qr').then(r=>r.text()).then(svg=>{const q=document.getElementById('qrcode-'+id);if(q)q.innerHTML=svg}).catch(()=>{});
+  } catch(e) { el.innerHTML = `<div class="mcard"><div class="mcard-body"><div class="flash error">${e.message}</div></div></div>`; }
+}
+
+function detailFlash(msg, type) {
+  const wrap = document.getElementById('detail-flash');
+  if (!wrap) return;
+  wrap.innerHTML = `<div class="flash ${type}">${msg}</div>`;
+  setTimeout(() => { if (wrap.firstChild) wrap.innerHTML=''; }, 6000);
 }
 
 async function confirmSession(id) {
   try {
-    const s = await api('/api/sessions/'+id);
+    const s = await api('/api/sessions/' + id);
     const name = s.customer_name || prompt('Customer name:') || 'Customer';
     const addr = s.customer_address_line_1 || prompt('Street address:') || '123 Main St';
     const city = s.customer_address_city || prompt('City:') || 'New York';
     const state = s.customer_address_state || prompt('State:') || 'NY';
     const zip = s.customer_address_postal_code || prompt('ZIP:') || '10001';
-    await api('/api/sessions/'+id+'/confirm',{method:'POST',body:JSON.stringify({
-      session_id:id, customer_name:name,
-      customer_address_line_1:addr, customer_city:city,
-      customer_state:state, customer_postal_code:zip,
-      customer_country_code:'US',
-    })});
-    flash('Confirmed! MT counterparty created ✓','success');
+    await api('/api/sessions/' + id + '/confirm', { method:'POST', body: JSON.stringify({ session_id:id, customer_name:name, customer_address_line_1:addr, customer_city:city, customer_state:state, customer_postal_code:zip, customer_country_code:'US' }) });
+    detailFlash('Confirmed — MT counterparty created.', 'success');
     selectSession(id);
-  } catch(e) { flash(e.message,'error'); }
+  } catch(e) { detailFlash(e.message, 'error'); }
 }
 
 async function initPayment(id) {
   try {
-    const d = await api('/api/sessions/'+id+'/initiate',{method:'POST'});
-    flash('Transfer initiated! MT payment order created. TXN: '+(d.transaction_id||''),'success');
-    selectSession(id);
-    loadSessions();
-    loadOverview();
-  } catch(e) { flash(e.message,'error'); }
+    const d = await api('/api/sessions/' + id + '/initiate', { method:'POST' });
+    detailFlash('Transfer initiated — MT payment order created. ' + (d.transaction_id ? 'TXN ' + d.transaction_id.slice(0,8) : ''), 'success');
+    selectSession(id); loadOverview();
+  } catch(e) { detailFlash(e.message, 'error'); }
 }
 
-function flash(msg,type) {
-  const el = document.getElementById('session-detail');
-  const d = document.createElement('div'); d.className=type; d.textContent=msg;
-  el.prepend(d);
-  setTimeout(()=>d.remove(),5000);
-}
-
-document.querySelector('[data-tab="sessions"]').addEventListener('click',loadSessions);
-
-function switchTab(name) {
-  document.querySelector(`[data-tab="${name}"]`)?.click();
-}
-
-// ==================== NEW SESSION ====================
+/* ==================== NEW SESSION ==================== */
 function renderCreate() {
   const el = document.getElementById('section-create');
-  el.innerHTML = `<div class="card"><div class="card-header"><h2>New Payment Session</h2></div>
-    <div class="card-body"><form id="createForm" style="max-width:500px">
-      <div class="form-group"><label>Merchant</label><input value="${MERCHANT_ID}" disabled style="font-family:monospace;font-size:12px"></div>
+  el.innerHTML = `<div class="mcard"><div class="mcard-head"><h2 class="mcard-title">New payment session</h2></div>
+    <div class="mcard-body"><form id="createForm" style="max-width:520px">
       <div class="form-row">
-        <div class="form-group"><label>Bank</label><select id="c-bank"></select></div>
-        <div class="form-group"><label>Amount (cents)</label><input id="c-amount" type="number" value="1000"></div>
+        <div class="field"><label>Bank</label><select id="c-bank"></select></div>
+        <div class="field"><label>Amount (USD)</label><input id="c-amount" value="10.00" inputmode="decimal"></div>
       </div>
       <div class="form-row">
-        <div class="form-group"><label>Currency</label><input id="c-currency" value="USD"></div>
-        <div class="form-group"><label>Note</label><input id="c-note" value="Payment via dashboard"></div>
+        <div class="field"><label>Currency</label><input id="c-currency" value="USD"></div>
+        <div class="field"><label>Note</label><input id="c-note" placeholder="Optional"></div>
       </div>
-      <div class="form-actions"><button class="btn btn-primary" type="submit">Create Session</button></div>
-    </form>
-    <div id="create-result"></div></div></div>`;
+      <div class="form-actions"><button class="mbtn mbtn-primary mbtn-md" type="submit"><i data-lucide="plus" style="width:15px;height:15px"></i>Create session</button></div>
+    </form><div id="create-result"></div></div></div>`;
+  icons();
   api('/api/banks').then(data => {
     const sel = document.getElementById('c-bank');
     data.banks.forEach(b => { const o=document.createElement('option'); o.value=b.id; o.textContent=b.name+' ('+b.id+')'; sel.appendChild(o); });
   });
   document.getElementById('createForm').addEventListener('submit', async e => {
     e.preventDefault();
-    const btn = e.target.querySelector('button'); btn.disabled=true; btn.innerHTML='<span class="spinner"></span> Creating...';
+    const btn = e.target.querySelector('button'); btn.disabled=true; btn.innerHTML='<span class="spinner" style="width:15px;height:15px;border-width:2px"></span> Creating…';
     const res = document.getElementById('create-result');
     try {
-      const s = await api('/api/sessions',{method:'POST',body:JSON.stringify({
-        merchant_id:MERCHANT_ID,
-        bank_id:document.getElementById('c-bank').value,
-        amount_cents:parseInt(document.getElementById('c-amount').value),
-        currency:document.getElementById('c-currency').value,
-        note:document.getElementById('c-note').value,
-      })});
-      res.innerHTML = `<div class="success" style="margin-top:16px">Session <strong>${s.id}</strong> created</div>
-        <div style="display:flex;gap:24px;align-items:start;margin-top:12px">
-          <div id="qrcode-new"><div class="spinner spinner-dark" style="margin:20px auto"></div></div>
-          <div><p style="font-size:13px;color:#5a6178">Share this link with the customer:</p>
-          <p style="font-family:monospace;font-size:12px;word-break:break-all">${window.location.origin}/pay/${s.id}</p>
+      const cents = Math.round(parseFloat(document.getElementById('c-amount').value) * 100);
+      const s = await api('/api/sessions', { method:'POST', body: JSON.stringify({ merchant_id:MERCHANT_ID, bank_id:document.getElementById('c-bank').value, amount_cents:cents, currency:document.getElementById('c-currency').value, note:document.getElementById('c-note').value || null }) });
+      res.innerHTML = `<div class="flash success" style="margin-top:16px">Session <strong style="font-family:var(--font-mono)">${s.id.slice(0,8)}…</strong> created · ${fmt(cents)}</div>
+        <div style="display:flex;gap:24px;align-items:flex-start;margin-top:12px;flex-wrap:wrap">
+          <div class="qr-well" id="qrcode-new"><div class="spinner"></div></div>
+          <div><p style="font-size:13px;color:var(--ink-2)">Share this link with the customer:</p>
+          <p class="paylink" style="text-align:left">${window.location.origin}/pay/${s.id}</p>
           <div class="form-actions" style="margin-top:12px">
-            <button class="btn btn-secondary btn-sm" onclick="switchTab('sessions')">View All Sessions</button>
+            <a class="mbtn mbtn-secondary mbtn-sm" href="/pay/${s.id}" target="_blank"><i data-lucide="external-link" style="width:14px;height:14px"></i>Open pay page</a>
+            <button class="mbtn mbtn-secondary mbtn-sm" onclick="switchTab('sessions')">View sessions</button>
           </div></div>
         </div>`;
-      fetch(API+'/api/sessions/'+s.id+'/qr').then(r=>r.text()).then(svg=>{const q=document.getElementById('qrcode-new');if(q)q.innerHTML=svg}).catch(()=>{});
-    } catch(e) { res.innerHTML = `<div class="error" style="margin-top:16px">${e.message}</div>`; }
-    btn.disabled=false; btn.innerHTML='Create Session';
+      icons();
+      fetch(API + '/api/sessions/' + s.id + '/qr').then(r=>r.text()).then(svg=>{const q=document.getElementById('qrcode-new');if(q)q.innerHTML=svg}).catch(()=>{});
+    } catch(e) { res.innerHTML = `<div class="flash error" style="margin-top:16px">${e.message}</div>`; }
+    btn.disabled=false; btn.innerHTML='<i data-lucide="plus" style="width:15px;height:15px"></i>Create session'; icons();
   });
 }
-renderCreate();
 
-// ==================== TRANSACTIONS ====================
+/* ==================== TRANSACTIONS ==================== */
 async function loadTransactions() {
   const el = document.getElementById('section-transactions');
-  el.innerHTML = `<div class="card"><div class="card-header"><h2>Transactions</h2></div>
-    <div class="card-body" id="txn-list"><div class="empty"><div class="spinner spinner-dark" style="margin:0 auto 8px"></div><p>Loading...</p></div></div></div>`;
+  el.innerHTML = `<div class="mcard"><div class="mcard-head"><h2 class="mcard-title">Transactions</h2></div>
+    <div id="txn-list"><div class="empty"><div class="spinner"></div></div></div></div>`;
   try {
     const data = await api(`/api/transactions?merchant_id=${MERCHANT_ID}&limit=50&offset=0`);
     const items = data.transactions || [];
-    if (!items.length) {
-      document.getElementById('txn-list').innerHTML = '<div class="empty"><p>No transactions yet.</p></div>';
-      return;
-    }
-    document.getElementById('txn-list').innerHTML = `<table><thead><tr><th>ID</th><th>Session</th><th>Amount</th><th>Rail</th><th>Reference</th><th>Settled</th></tr></thead>
-    <tbody>${items.map(t => `<tr>
-      <td style="font-family:monospace;font-size:11px">${t.id.slice(0,8)}…</td>
-      <td style="font-family:monospace;font-size:11px">${(t.session_id||'').slice(0,8)}…</td>
-      <td><strong>$${(t.amount_cents/100).toFixed(2)}</strong></td>
-      <td><span class="badge badge-processing">${t.rail_used}</span></td>
-      <td style="font-family:monospace;font-size:11px">${(t.reference||'').slice(0,16)}</td>
-      <td>${t.settled_at ? new Date(t.settled_at).toLocaleString() : '<span style="color:#8a94a6">—</span>'}</td>
-    </tr>`).join('')}</tbody></table>`;
-  } catch(e) { document.getElementById('txn-list').innerHTML = `<div class="error">${e.message}</div>`; }
+    const list = document.getElementById('txn-list');
+    if (!items.length) { list.innerHTML = '<div class="empty">No transactions yet.</div>'; return; }
+    list.innerHTML = `<div class="tbl-wrap"><table class="mtbl"><thead><tr><th>ID</th><th>Session</th><th>Amount</th><th>Rail</th><th>Reference</th><th>Settled</th></tr></thead><tbody>
+      ${items.map(t => `<tr>
+        <td class="cell-id">${t.id.slice(0,8)}…</td>
+        <td class="cell-id">${(t.session_id||'').slice(0,8)}…</td>
+        <td class="cell-amt">${fmt(t.amount_cents)}</td>
+        <td><span class="rail-tag">${(t.rail_used||'—').toUpperCase()}</span></td>
+        <td class="cell-id">${(t.reference||'').slice(0,16)}</td>
+        <td class="cell-muted">${t.settled_at ? new Date(t.settled_at).toLocaleString() : '—'}</td>
+      </tr>`).join('')}</tbody></table></div>`;
+  } catch(e) { document.getElementById('txn-list').innerHTML = `<div class="mcard-body"><div class="flash error">${e.message}</div></div>`; }
 }
-document.querySelector('[data-tab="transactions"]').addEventListener('click',loadTransactions);
 
-// ==================== PLAID ====================
+/* ==================== PLAID ==================== */
 function renderPlaid() {
   const el = document.getElementById('section-plaid');
-  el.innerHTML = `<div class="card"><div class="card-header"><h2>Plaid Integration</h2></div>
-    <div class="card-body" style="max-width:500px">
-      <div class="form-group"><label>Session ID</label><input id="plaid-session" placeholder="Session UUID" value="${selectedSessionId||''}"></div>
-      <button class="btn btn-primary" id="plaid-link-btn">Create Link Token</button>
+  el.innerHTML = `<div class="mcard"><div class="mcard-head"><h2 class="mcard-title">Create link token</h2></div>
+    <div class="mcard-body" style="max-width:520px">
+      <div class="field"><label>Session ID</label><input id="plaid-session" placeholder="Session UUID" value="${selectedSessionId||''}"></div>
+      <button class="mbtn mbtn-primary mbtn-md" id="plaid-link-btn"><i data-lucide="link" style="width:15px;height:15px"></i>Create link token</button>
       <div id="plaid-result" style="margin-top:12px"></div>
     </div></div>
-    <div class="card"><div class="card-header"><h2>Exchange Public Token</h2></div>
-    <div class="card-body" style="max-width:500px"><form id="exchangeForm">
+    <div class="mcard"><div class="mcard-head"><h2 class="mcard-title">Exchange public token</h2></div>
+    <div class="mcard-body" style="max-width:520px"><form id="exchangeForm">
       <div class="form-row">
-        <div class="form-group"><label>Session ID</label><input id="plaid-ex-session" placeholder="UUID" value="${selectedSessionId||''}"></div>
-        <div class="form-group"><label>Public Token</label><input id="plaid-public" placeholder="From Plaid Link"></div>
+        <div class="field"><label>Session ID</label><input id="plaid-ex-session" placeholder="UUID" value="${selectedSessionId||''}"></div>
+        <div class="field"><label>Public token</label><input id="plaid-public" placeholder="From Plaid Link"></div>
       </div>
-      <div class="form-actions"><button class="btn btn-primary" type="submit">Exchange Token</button></div>
+      <div class="form-actions"><button class="mbtn mbtn-primary mbtn-md" type="submit"><i data-lucide="arrow-left-right" style="width:15px;height:15px"></i>Exchange token</button></div>
     </form><div id="exchange-result" style="margin-top:12px"></div></div></div>`;
+  icons();
+  document.getElementById('plaid-link-btn').addEventListener('click', async () => {
+    const sid = document.getElementById('plaid-session').value;
+    const res = document.getElementById('plaid-result');
+    if (!sid) { res.innerHTML='<div class="flash error">Session ID required</div>'; return; }
+    try { const data = await api('/api/plaid/link-token?session_id=' + sid); res.innerHTML=`<div class="flash success">Link token created</div><pre>${JSON.stringify(data,null,2)}</pre>`; }
+    catch(e) { res.innerHTML=`<div class="flash error">${e.message}</div>`; }
+  });
+  document.getElementById('exchangeForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const res = document.getElementById('exchange-result');
+    const sid = document.getElementById('plaid-ex-session').value;
+    const token = document.getElementById('plaid-public').value;
+    if (!sid || !token) { res.innerHTML='<div class="flash error">Session ID and public token required</div>'; return; }
+    try { const data = await api('/api/plaid/exchange', { method:'POST', body: JSON.stringify({ session_id:sid, public_token:token }) }); res.innerHTML=`<div class="flash success">Token exchanged</div><pre>${JSON.stringify(data,null,2)}</pre>`; }
+    catch(e) { res.innerHTML=`<div class="flash error">${e.message}</div>`; }
+  });
 }
+function plaidForSession(id) { switchTab('plaid'); document.getElementById('plaid-session').value = id; document.getElementById('plaid-ex-session').value = id; }
+
+/* boot */
+loadOverview();
+renderCreate();
 renderPlaid();
-
-document.getElementById('plaid-link-btn')?.addEventListener('click',async()=>{
-  const sid = document.getElementById('plaid-session').value;
-  const res = document.getElementById('plaid-result');
-  if (!sid) { res.innerHTML='<div class="error">Session ID required</div>'; return; }
-  try {
-    const data = await api('/api/plaid/link-token?session_id='+sid);
-    res.innerHTML=`<div class="success">Link token created</div><pre>${JSON.stringify(data,null,2)}</pre>`;
-  } catch(e) { res.innerHTML=`<div class="error">${e.message}</div>`; }
-});
-
-document.getElementById('exchangeForm')?.addEventListener('submit',async e=>{
-  e.preventDefault();
-  const res = document.getElementById('exchange-result');
-  const sid = document.getElementById('plaid-ex-session').value;
-  const token = document.getElementById('plaid-public').value;
-  if (!sid) { res.innerHTML='<div class="error">Session ID required</div>'; return; }
-  if (!token) { res.innerHTML='<div class="error">Public token required</div>'; return; }
-  try {
-    const data = await api('/api/plaid/exchange',{method:'POST',body:JSON.stringify({session_id:sid,public_token:token})});
-    res.innerHTML=`<div class="success">Token exchanged!</div><pre>${JSON.stringify(data,null,2)}</pre>`;
-  } catch(e) { res.innerHTML=`<div class="error">${e.message}</div>`; }
-});
-
-function plaidForSession(id) {
-  switchTab('plaid');
-  document.getElementById('plaid-session').value = id;
-  document.getElementById('plaid-ex-session').value = id;
-}
+icons();
 </script>
 </body>
 </html>

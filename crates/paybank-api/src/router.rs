@@ -1,15 +1,30 @@
 use axum::{
-    extract::{Path, Request},
+    extract::{DefaultBodyLimit, Path, Request, State},
     http::StatusCode,
+    middleware,
     response::{IntoResponse, Response},
     routing::{get, post},
     Router,
 };
+use tower_http::cors::{Any, CorsLayer};
 use tower_http::services::ServeDir;
 use uuid::Uuid;
 
+use crate::auth;
 use crate::routes;
 use crate::state::AppState;
+
+/// Readiness probe — verifies the DB is actually reachable, unlike /health
+/// which only proves the process is up.
+async fn readiness(State(state): State<AppState>) -> Response {
+    match sqlx::query_scalar::<_, i32>("SELECT 1")
+        .fetch_one(&state.db.pool)
+        .await
+    {
+        Ok(_) => (StatusCode::OK, "ready").into_response(),
+        Err(_) => (StatusCode::SERVICE_UNAVAILABLE, "db unavailable").into_response(),
+    }
+}
 
 async fn pay_page(Path(id): Path<Uuid>) -> impl IntoResponse {
     let content = tokio::fs::read_to_string("web/pay.html")
@@ -69,44 +84,107 @@ async fn admin_handler(req: Request) -> Response {
 }
 
 pub fn build_router(state: AppState) -> Router {
-    Router::new()
-        .route("/health", get(|| async { "OK" }))
-        .route("/api/banks", get(routes::banks::list_banks))
-        .route("/api/sessions", get(routes::sessions::list_sessions).post(routes::sessions::create_session))
+    // Operator console API — gated behind a valid admin JWT (P0: was fully open
+    // and leaked password_hash/api_key). Login/me are public (see `public`).
+    let admin = Router::new()
+        .route("/api/admin/stats", get(routes::admin::get_stats))
+        .route("/api/admin/sessions", get(routes::admin::list_sessions))
+        .route("/api/admin/sessions/:id", get(routes::admin::get_session_detail))
         .route(
-            "/api/sessions/initiate",
-            post(routes::initiate::initiate_session),
+            "/api/admin/merchants",
+            get(routes::admin::list_merchants).post(routes::admin::create_merchant),
         )
+        .route(
+            "/api/admin/merchants/:id",
+            get(routes::admin::get_merchant).put(routes::admin::update_merchant),
+        )
+        .route("/api/admin/banks", get(routes::admin::list_banks))
+        .route("/api/admin/settlements", get(routes::admin::list_settlements))
+        .route("/api/admin/webhooks", get(routes::admin::list_webhooks))
+        .route(
+            "/api/admin/webhooks/:id/retry",
+            post(routes::admin::retry_webhook),
+        )
+        .route_layer(middleware::from_fn_with_state(state.clone(), auth::admin_auth));
+
+    // Operator surface: session creation/listing, money initiation and the
+    // transactions ledger. P0: these were PUBLIC — anyone could move money for
+    // any session UUID or read any merchant's data by passing merchant_id. Now
+    // gated behind the operator JWT (the admin console attaches it).
+    let operator = Router::new()
+        .route(
+            "/api/sessions",
+            get(routes::sessions::list_sessions).post(routes::sessions::create_session),
+        )
+        .route("/api/sessions/initiate", post(routes::initiate::initiate_session))
+        .route("/api/sessions/:id/initiate", post(routes::sessions::initiate_payment))
+        .route("/api/transactions", get(routes::transactions::list_transactions))
+        .route_layer(middleware::from_fn_with_state(state.clone(), auth::admin_auth));
+
+    // Merchant API — gated behind a valid merchant API key (injects merchant id).
+    let merchant = Router::new()
+        .route(
+            "/api/merchant-api/balances/:merchant_id",
+            get(routes::merchant_api::get_balance),
+        )
+        .route(
+            "/api/merchant-api/merchants/profile",
+            get(routes::merchant_api::get_merchant_profile),
+        )
+        .route("/api/merchant-api/payments", get(routes::merchant_api::list_payments))
+        .route(
+            "/api/merchant-api/payments/timeseries",
+            get(routes::merchant_api::payment_timeseries),
+        )
+        .route(
+            "/api/merchant-api/payment_links",
+            post(routes::merchant_api::create_payment_link),
+        )
+        .route_layer(middleware::from_fn_with_state(state.clone(), auth::merchant_auth));
+
+    // Public surfaces: health, auth bootstrap, webhooks (signature-verified),
+    // and the customer-facing pay/session flow reached via unguessable UUIDs.
+    let public = Router::new()
+        .route("/health", get(|| async { "OK" }))
+        .route("/health/ready", get(readiness))
+        .route("/api/admin/login", post(auth::login))
+        .route("/api/admin/me", get(auth::me))
+        .route("/api/banks", get(routes::banks::list_banks))
+        // Customer-facing, capability-scoped by the unguessable session UUID.
+        // `get_session` returns a REDACTED view (no raw bank account/routing).
         .route("/api/sessions/:id", get(routes::sessions::get_session))
         .route("/api/sessions/:id/qr", get(routes::sessions::get_session_qr))
         .route("/api/sessions/:id/stream", get(routes::sessions::stream_session))
-        .route("/api/sessions/:id/initiate", post(routes::sessions::initiate_payment))
         .route("/api/sessions/:id/confirm", post(routes::confirm::confirm_payment))
-        .route("/api/transactions", get(routes::transactions::list_transactions))
         .route("/api/webhooks/column", post(routes::webhooks::column_webhook))
-        .route("/api/webhooks/moderntreasury", post(routes::webhooks::moderntreasury_webhook))
-        .route("/api/merchant-api/balances/:merchant_id", get(routes::merchant_api::get_balance))
-        .route("/api/merchant-api/merchants/profile", get(routes::merchant_api::get_merchant_profile))
-        .route("/api/merchant-api/payments", get(routes::merchant_api::list_payments))
-        .route("/api/merchant-api/payments/timeseries", get(routes::merchant_api::payment_timeseries))
-        .route("/api/merchant-api/payment_links", post(routes::merchant_api::create_payment_link))
+        .route(
+            "/api/webhooks/moderntreasury",
+            post(routes::webhooks::moderntreasury_webhook),
+        )
         .route("/api/plaid/link-token", get(routes::plaid::create_link_token))
         .route("/api/plaid/exchange", post(routes::plaid::exchange_public_token))
         .route("/pay/:id", get(pay_page))
         .route("/invoice/:id", get(invoice_page))
         .route("/api/mt/payment-orders/:id", get(routes::mt::get_payment_order))
         .route("/api/mt/counterparties/:id", get(routes::mt::get_counterparty))
-        .route("/api/admin/stats", get(routes::admin::get_stats))
-        .route("/api/admin/sessions", get(routes::admin::list_sessions))
-        .route("/api/admin/sessions/:id", get(routes::admin::get_session_detail))
-        .route("/api/admin/merchants", get(routes::admin::list_merchants).post(routes::admin::create_merchant))
-        .route("/api/admin/merchants/:id", get(routes::admin::get_merchant).put(routes::admin::update_merchant))
-        .route("/api/admin/banks", get(routes::admin::list_banks))
-        .route("/api/admin/settlements", get(routes::admin::list_settlements))
-        .route("/api/admin/webhooks", get(routes::admin::list_webhooks))
         .route("/admin", get(admin_handler))
         .route("/admin/", get(admin_handler))
         .route("/admin/*path", get(admin_handler))
-        .nest_service("/static", ServeDir::new("web"))
+        .nest_service("/static", ServeDir::new("web"));
+
+    // Bearer tokens travel in the Authorization header (not cookies), so we don't
+    // allow credentials; a 256 KiB body cap protects the JSON handlers from abuse.
+    // Tighten allow_origin to specific operator origins before exposing publicly.
+    let cors = CorsLayer::new()
+        .allow_origin(Any)
+        .allow_methods(Any)
+        .allow_headers(Any);
+
+    public
+        .merge(admin)
+        .merge(operator)
+        .merge(merchant)
+        .layer(DefaultBodyLimit::max(256 * 1024))
+        .layer(cors)
         .with_state(state)
 }

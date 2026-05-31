@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT direction, SUM(amount_cents)::BIGINT as total\n            FROM ledger_postings\n            WHERE journal_entry_id = $1\n            GROUP BY direction\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "direction",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "total",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      null
+    ]
+  },
+  "hash": "e85187df6963e0fc3e0abb0b3d9405021459ebef21bd55af403221b6905f6798"
+}

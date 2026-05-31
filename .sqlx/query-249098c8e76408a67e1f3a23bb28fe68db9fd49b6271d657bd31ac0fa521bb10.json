@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE payment_sessions\n           SET column_counterparty_id = $2, updated_at = NOW()\n           WHERE id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "249098c8e76408a67e1f3a23bb28fe68db9fd49b6271d657bd31ac0fa521bb10"
+}

@@ -42,6 +42,14 @@ pub enum AppError {
     #[error("modern treasury api error: {0}")]
     ModernTreasuryError(String),
 
+    /// A provider call whose outcome is UNKNOWN (network timeout, dropped
+    /// connection, or 5xx). The transfer may or may not have gone through, so
+    /// the caller must NOT mark the payment Failed — leave it Processing for a
+    /// webhook or reconciliation job to resolve. Distinct from a definitive 4xx
+    /// rejection.
+    #[error("provider temporarily unavailable / outcome unknown: {0}")]
+    ProviderAmbiguous(String),
+
     #[error("plaid api error: {0}")]
     PlaidError(String),
 
@@ -50,6 +58,12 @@ pub enum AppError {
 
     #[error("unauthorized")]
     Unauthorized,
+
+    #[error("too many requests")]
+    TooManyRequests,
+
+    #[error("compliance check failed: {0}")]
+    ComplianceRejected(String),
 
     #[error("database error: {0}")]
     Database(#[from] sqlx::Error),
@@ -77,9 +91,12 @@ impl IntoResponse for AppError {
             AppError::IdempotencyConflict => (StatusCode::CONFLICT, self.to_string()),
             AppError::ColumnError(_) => (StatusCode::BAD_GATEWAY, self.to_string()),
             AppError::ModernTreasuryError(_) => (StatusCode::BAD_GATEWAY, self.to_string()),
+            AppError::ProviderAmbiguous(_) => (StatusCode::GATEWAY_TIMEOUT, self.to_string()),
             AppError::PlaidError(_) => (StatusCode::BAD_GATEWAY, self.to_string()),
             AppError::AuthError(_) => (StatusCode::UNAUTHORIZED, self.to_string()),
             AppError::Unauthorized => (StatusCode::UNAUTHORIZED, self.to_string()),
+            AppError::TooManyRequests => (StatusCode::TOO_MANY_REQUESTS, self.to_string()),
+            AppError::ComplianceRejected(_) => (StatusCode::FORBIDDEN, self.to_string()),
             AppError::Database(e) => {
                 tracing::error!("Database error: {:?}", e);
                 (StatusCode::INTERNAL_SERVER_ERROR, "database error".into())

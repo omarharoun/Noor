@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE payment_sessions\n           SET status = $2,\n               column_ref = COALESCE($3, column_ref),\n               updated_at = NOW()\n           WHERE id = $1 AND status = ANY($4::text[])",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text",
+        "TextArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "6add0aa9d2c6b1981f324b96f40d609f1a66ec74ce6ffbde1697ac813628e9d0"
+}

@@ -1,136 +1,93 @@
-import { useState, useEffect } from 'react';
-import { Card, Col, Row, Statistic, Typography } from 'antd';
-import {
-  SwapOutlined,
-  CheckCircleOutlined,
-  ClockCircleOutlined,
-  DollarOutlined,
-} from '@ant-design/icons';
-import {
-  BarChart,
-  Bar,
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-} from 'recharts';
+import { api } from '../lib/api';
+import { useAsync } from '../lib/useAsync';
+import { fmtCompact, fmtMoney, short, ago } from '../lib/format';
+import { Card, StatTile, StatusBadge, RailTag, Spinner, Empty } from '../components/primitives';
+import { Button } from '../components/primitives';
+import { BarChart, LineChart } from '../components/charts';
+import type { Ctx } from '../App';
 
-interface Stats {
-  today_total_transactions: number;
-  today_completed: number;
-  pending_count: number;
-  total_volume_cents: number;
-  by_rail: Array<{ rail_used: string; count: number; volume: number }>;
-  last_7_days: Array<{ date: string; count: number; volume: number }>;
-}
+export function Dashboard({ ctx }: { ctx: Ctx }) {
+  const stats = useAsync(() => api.stats(), []);
+  const recent = useAsync(() => api.sessions({ limit: 6 }), []);
 
-const { Title } = Typography;
+  if (stats.loading) return <div className="center-load"><Spinner /></div>;
+  if (stats.error || !stats.data) return <div className="flash error">{stats.error ?? 'Failed to load stats'}</div>;
 
-export const Dashboard = () => {
-  const [stats, setStats] = useState<Stats | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    fetch('/api/admin/stats')
-      .then((r) => r.json())
-      .then((data: Stats) => {
-        setStats(data);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
-  }, []);
-
-  if (loading || !stats) {
-    return <Card loading />;
-  }
+  const s = stats.data;
+  const byRail = s.by_rail.map((r) => ({ rail: r.rail_used ?? 'n/a', count: r.count, volume: r.volume }));
+  const last7 = s.last_7_days.map((d) => ({
+    date: new Date(d.date).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' }),
+    count: d.count,
+    volume: d.volume,
+  }));
 
   return (
     <div>
-      <Title level={3}>Dashboard</Title>
-      <Row gutter={[16, 16]}>
-        <Col xs={24} sm={12} lg={6}>
-          <Card>
-            <Statistic
-              title="Today Total"
-              value={stats.today_total_transactions}
-              prefix={<SwapOutlined />}
-            />
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} lg={6}>
-          <Card>
-            <Statistic
-              title="Completed"
-              value={stats.today_completed}
-              prefix={<CheckCircleOutlined />}
-              valueStyle={{ color: '#3f8600' }}
-            />
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} lg={6}>
-          <Card>
-            <Statistic
-              title="Pending"
-              value={stats.pending_count}
-              prefix={<ClockCircleOutlined />}
-              valueStyle={{ color: '#faad14' }}
-            />
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} lg={6}>
-          <Card>
-            <Statistic
-              title="Volume"
-              value={(stats.total_volume_cents / 100).toFixed(2)}
-              prefix={<DollarOutlined />}
-              precision={2}
-            />
-          </Card>
-        </Col>
-      </Row>
-      <Row gutter={[16, 16]} style={{ marginTop: 24 }}>
-        <Col xs={24} lg={12}>
-          <Card title="By Rail">
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={stats.by_rail}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="rail_used" />
-                <YAxis />
-                <Tooltip />
-                <Bar dataKey="count" fill="#1677ff" name="Count" />
-                <Bar dataKey="volume" fill="#52c41a" name="Volume" />
-              </BarChart>
-            </ResponsiveContainer>
-          </Card>
-        </Col>
-        <Col xs={24} lg={12}>
-          <Card title="Last 7 Days">
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={stats.last_7_days}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="date" />
-                <YAxis />
-                <Tooltip />
-                <Line
-                  type="monotone"
-                  dataKey="count"
-                  stroke="#1677ff"
-                  name="Count"
-                />
-                <Line
-                  type="monotone"
-                  dataKey="volume"
-                  stroke="#52c41a"
-                  name="Volume"
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </Card>
-        </Col>
-      </Row>
+      <div className="stat-grid">
+        <StatTile icon="trending-up" label="Total volume" value={fmtCompact(s.total_volume_cents)} sub="completed sessions" />
+        <StatTile icon="arrow-left-right" label="Today" value={s.today_total_transactions} sub="sessions created" />
+        <StatTile icon="check-circle-2" label="Completed today" value={s.today_completed} />
+        <StatTile icon="clock" label="Pending" value={s.pending_count} sub="awaiting confirmation" />
+      </div>
+
+      <div className="chart-grid">
+        <Card title="Volume by rail">
+          <BarChart data={byRail} />
+        </Card>
+        <Card title="Last 7 days">
+          <LineChart data={last7} />
+        </Card>
+      </div>
+
+      <div className="section-gap" />
+
+      <Card
+        title="Recent activity"
+        live
+        action={
+          <Button variant="ghost" size="sm" icon="arrow-right" onClick={() => ctx.go('sessions')}>
+            All sessions
+          </Button>
+        }
+        pad={false}
+      >
+        <div className="tbl-wrap">
+          <table className="ntbl">
+            <thead>
+              <tr>
+                <th>Session</th>
+                <th>Merchant</th>
+                <th>Amount</th>
+                <th>Status</th>
+                <th>Rail</th>
+                <th>When</th>
+              </tr>
+            </thead>
+            <tbody>
+              {recent.data?.sessions.map((sess) => (
+                <tr key={sess.id} onClick={() => ctx.go('sessions')}>
+                  <td className="cell-id">{short(sess.id)}</td>
+                  <td>
+                    <span className="cell-strong">{ctx.merchantName(sess.merchant_id)}</span>
+                  </td>
+                  <td className="cell-amt">{fmtMoney(sess.amount_cents)}</td>
+                  <td>
+                    <StatusBadge status={sess.status} />
+                  </td>
+                  <td>
+                    <RailTag rail={sess.rail_used} />
+                  </td>
+                  <td className="cell-muted">{ago(sess.created_at)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {recent.loading && <div className="center-load"><Spinner /></div>}
+          {recent.data && recent.data.sessions.length === 0 && (
+            <Empty>No sessions yet. Create one to start accepting payments.</Empty>
+          )}
+        </div>
+      </Card>
     </div>
   );
-};
+}

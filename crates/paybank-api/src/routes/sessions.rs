@@ -11,8 +11,24 @@ use chrono::{Duration, Utc};
 
 pub async fn create_session(
     State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
     Json(req): Json<CreateSessionRequest>,
 ) -> Result<Json<CreateSessionResponse>, AppError> {
+    // Optional idempotency: a repeat with the same key+body replays the original
+    // session instead of minting a duplicate.
+    let idem_key = crate::idempotency::key_from(&headers);
+    if let Some(key) = &idem_key {
+        let request_hash = crate::idempotency::hash(&req);
+        match crate::idempotency::begin(&state.db, req.merchant_id, key, &request_hash).await? {
+            crate::idempotency::Outcome::Replay(body) => {
+                let resp: CreateSessionResponse =
+                    serde_json::from_value(body).map_err(|e| AppError::Internal(e.into()))?;
+                return Ok(Json(resp));
+            }
+            crate::idempotency::Outcome::Proceed => {}
+        }
+    }
+
     let bank = bank_repo::get_bank(&state.db.pool, &req.bank_id)
         .await?
         .ok_or(AppError::BankNotFound)?;
@@ -38,12 +54,10 @@ pub async fn create_session(
     )
     .await?;
 
-    let public_url = std::env::var("PUBLIC_APP_URL").unwrap_or_else(|_| "http://localhost:3000".into());
-    let pay_url = format!("{}/pay/{}", public_url, id);
-
+    let pay_url = format!("{}/pay/{}", state.config.public_app_url, id);
     let qr_data = generate_qr_data(&pay_url);
 
-    Ok(Json(CreateSessionResponse {
+    let response = CreateSessionResponse {
         id: session.id,
         status: paybank_core::PaymentStatus::Created,
         session_status: session.status,
@@ -51,7 +65,14 @@ pub async fn create_session(
         currency: session.currency,
         expires_at: session.expires_at,
         qr_data: Some(qr_data),
-    }))
+    };
+
+    if let Some(key) = &idem_key {
+        let body = serde_json::to_value(&response).map_err(|e| AppError::Internal(e.into()))?;
+        crate::idempotency::complete(&state.db, req.merchant_id, key, &body).await?;
+    }
+
+    Ok(Json(response))
 }
 
 #[derive(Deserialize)]
@@ -74,15 +95,56 @@ pub async fn list_sessions(
     })))
 }
 
+/// Public, capability-scoped session view (anyone with the unguessable UUID can
+/// read it — the customer pay page does). P0: this MUST NOT expose the raw bank
+/// account or routing number. We return only a masked last-4 and a `bank_linked`
+/// flag; full details stay on the authenticated admin detail endpoint.
 pub async fn get_session(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
-) -> Result<Json<paybank_core::PaymentSession>, AppError> {
-    let session = session_repo::get_session(&state.db.pool, id)
+) -> Result<Json<serde_json::Value>, AppError> {
+    let s = session_repo::get_session(&state.db.pool, id)
         .await?
         .ok_or(AppError::SessionNotFound)?;
 
-    Ok(Json(session))
+    let bank_linked = s
+        .customer_account_number
+        .as_deref()
+        .map(|n| !n.is_empty())
+        .unwrap_or(false);
+    let account_last4 = s
+        .customer_account_number
+        .as_deref()
+        .filter(|n| n.len() >= 4)
+        .map(|n| n[n.len() - 4..].to_string());
+
+    Ok(Json(serde_json::json!({
+        "id": s.id,
+        "merchant_id": s.merchant_id,
+        "bank_id": s.bank_id,
+        "amount_cents": s.amount_cents,
+        "currency": s.currency,
+        "note": s.note,
+        "status": s.status,
+        "rail_used": s.rail_used,
+        "column_ref": s.column_ref,
+        "column_counterparty_id": s.column_counterparty_id,
+        "customer_name": s.customer_name,
+        "customer_email": s.customer_email,
+        "customer_phone": s.customer_phone,
+        "customer_address_line_1": s.customer_address_line_1,
+        "customer_address_city": s.customer_address_city,
+        "customer_address_state": s.customer_address_state,
+        "customer_address_postal_code": s.customer_address_postal_code,
+        "customer_address_country_code": s.customer_address_country_code,
+        "customer_account_type": s.customer_account_type,
+        // Redacted: never expose the full account/routing number publicly.
+        "customer_account_last4": account_last4,
+        "bank_linked": bank_linked,
+        "expires_at": s.expires_at,
+        "created_at": s.created_at,
+        "updated_at": s.updated_at,
+    })))
 }
 
 pub async fn get_session_qr(
@@ -160,7 +222,8 @@ pub async fn initiate_payment(
     }
 
     let rail = session.rail_used.as_ref().ok_or(AppError::SessionNotFound)?;
-    let raw = session.column_counterparty_id
+    let raw = session
+        .column_counterparty_id
         .ok_or_else(|| AppError::Internal(anyhow::anyhow!("No counterparty linked")))?;
     let ext_account_id = raw.split('|').nth(1).unwrap_or(&raw);
     let actual_recipient_id = if std::env::var("MODERN_TREASURY_API_KEY").is_ok() {
@@ -169,11 +232,19 @@ pub async fn initiate_payment(
         raw.split('|').next().unwrap_or(&raw)
     };
 
-    session_repo::update_status(&state.db.pool, id, &SessionStatus::Processing, None).await?;
+    // P0: atomic compare-and-swap guard. Only an `authorized` session can be
+    // moved to `processing`, and only one caller wins — this is what stops two
+    // concurrent/duplicate initiate calls from both firing a transfer.
+    let claimed =
+        session_repo::try_transition(&state.db.pool, id, &[SessionStatus::Authorized], &SessionStatus::Processing, None)
+            .await?;
+    if !claimed {
+        return Err(AppError::InvalidStateTransition);
+    }
 
     let result = paybank_payments::initiate_transfer(
         id,
-        &actual_recipient_id,
+        actual_recipient_id,
         rail,
         session.amount_cents,
         &format!("Session {}", id),
@@ -182,27 +253,58 @@ pub async fn initiate_payment(
 
     match result {
         Ok(transfer) => {
-            session_repo::update_status(
+            // Only the winner of Processing -> Completed records the settlement,
+            // so a concurrent webhook/reconcile can't double-post (TOCTOU guard).
+            let won = session_repo::try_transition(
                 &state.db.pool,
                 id,
+                &[SessionStatus::Processing],
                 &SessionStatus::Completed,
                 Some(&transfer.provider_transfer_id),
             )
             .await?;
 
             let txn_id = Uuid::new_v4();
-            paybank_db::transaction_repo::create_transaction(
-                &state.db.pool,
-                txn_id,
-                id,
-                session.merchant_id,
-                session.amount_cents,
-                rail,
-                Some(&transfer.provider_transfer_id),
-                &format!("pay_{}", id),
-                Utc::now(),
-            )
-            .await?;
+            if won {
+                paybank_db::transaction_repo::create_transaction(
+                    &state.db.pool,
+                    txn_id,
+                    id,
+                    session.merchant_id,
+                    session.amount_cents,
+                    rail,
+                    Some(&transfer.provider_transfer_id),
+                    &format!("pay_{}", id),
+                    Utc::now(),
+                )
+                .await?;
+
+                // Ledger failure is logged for reconciliation, never surfaced as a
+                // failed payment to the caller (the transfer already succeeded).
+                if let Err(e) = paybank_db::ledger_repo::LedgerRepo::record_settlement(
+                    &state.db.pool,
+                    session.merchant_id,
+                    id,
+                    session.amount_cents,
+                )
+                .await
+                {
+                    tracing::error!(
+                        session_id = %id,
+                        error = %e,
+                        "transfer settled but ledger posting failed — needs reconciliation"
+                    );
+                }
+
+                let _ = paybank_db::webhook_repo::enqueue(
+                    &state.db.pool,
+                    session.merchant_id,
+                    Some(id),
+                    "session.completed",
+                    serde_json::json!({ "session_id": id, "status": "completed", "amount_cents": session.amount_cents }),
+                )
+                .await;
+            }
 
             Ok(Json(serde_json::json!({
                 "status": "completed",
@@ -210,7 +312,24 @@ pub async fn initiate_payment(
             })))
         }
         Err(e) => {
-            session_repo::update_status(&state.db.pool, id, &SessionStatus::Expired, None).await?;
+            // A definitive provider rejection → Failed (distinct from Expired).
+            // Ambiguous errors stay Processing for webhook/reconciliation to resolve.
+            if matches!(e, AppError::ProviderAmbiguous(_)) {
+                tracing::warn!(
+                    session_id = %id,
+                    error = %e,
+                    "ambiguous transfer outcome; leaving session Processing for reconciliation"
+                );
+            } else {
+                session_repo::try_transition(
+                    &state.db.pool,
+                    id,
+                    &[SessionStatus::Processing],
+                    &SessionStatus::Failed,
+                    None,
+                )
+                .await?;
+            }
             Err(e)
         }
     }

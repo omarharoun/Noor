@@ -1,0 +1,25 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE payment_sessions SET\n            customer_name = $2,\n            customer_email = $3,\n            customer_phone = $4,\n            customer_address_line_1 = $5,\n            customer_address_city = $6,\n            customer_address_state = $7,\n            customer_address_postal_code = $8,\n            customer_address_country_code = $9,\n            customer_account_number = $10,\n            customer_routing_number = $11,\n            customer_account_type = $12,\n            updated_at = NOW()\n        WHERE id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "adf1f780344c3aae9f0fc057402f47fb09c39fab07d3f76621bf0ed41bfab3c8"
+}

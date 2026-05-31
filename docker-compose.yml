@@ -1,15 +1,20 @@
+# Real secrets (COLUMN_*, MODERN_TREASURY_*, PLAID_*, WEBHOOK_SECRET, etc.)
+# must be supplied via an untracked .env file or a secrets manager.
+# Copy .env.example to .env and fill in real values before running.
+
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: paybank-postgres
+    container_name: noor-postgres
     environment:
       POSTGRES_DB: noralpay
       POSTGRES_USER: noralpay
-      POSTGRES_PASSWORD: noralpay_dev_password
+      # Dev default; override via env / secret manager in any shared environment.
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-noralpay_dev_password}"
     ports:
       - "5433:5432"
     volumes:
-      - paybank-postgres-data:/var/lib/postgresql/data
+      - noor-postgres-data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U noralpay -d noralpay"]
       interval: 5s
@@ -19,26 +24,30 @@ services:
 
   api:
     build: .
-    container_name: paybank-api
+    container_name: noor-api
+    # Secrets come from the .env file (see .env.example) — never commit real values.
+    env_file: .env
     ports:
       - "8888:8888"
     environment:
-      DATABASE_URL: "postgresql://noralpay:noralpay_dev_password@postgres:5432/noralpay"
+      # Local DB connection — overrides any DATABASE_URL in .env for compose use
+      DATABASE_URL: "postgresql://noralpay:${POSTGRES_PASSWORD:-noralpay_dev_password}@postgres:5432/noralpay"
       BIND_ADDR: "0.0.0.0:8888"
-      PUBLIC_APP_URL: "http://192.168.1.64:8888"
-      COLUMN_API_KEY: "***REMOVED***"
-      COLUMN_MERCHANT_ACCOUNT_ID: "***REMOVED***"
-      MODERN_TREASURY_ORG_ID: "***REMOVED***"
-      MODERN_TREASURY_API_KEY: "***REMOVED***"
-      MT_INTERNAL_ACCOUNT_ID: "***REMOVED***"
-      PLAID_CLIENT_ID: "***REMOVED***"
-      PLAID_SECRET: "***REMOVED***"
-      PLAID_ENV: "sandbox"
-      WEBHOOK_SECRET: "***REMOVED***"
+      # Provider secrets — interpolated from .env / environment
+      COLUMN_API_KEY: "${COLUMN_API_KEY}"
+      COLUMN_MERCHANT_ACCOUNT_ID: "${COLUMN_MERCHANT_ACCOUNT_ID}"
+      MODERN_TREASURY_ORG_ID: "${MODERN_TREASURY_ORG_ID}"
+      MODERN_TREASURY_API_KEY: "${MODERN_TREASURY_API_KEY}"
+      MT_INTERNAL_ACCOUNT_ID: "${MT_INTERNAL_ACCOUNT_ID}"
+      PLAID_CLIENT_ID: "${PLAID_CLIENT_ID}"
+      PLAID_SECRET: "${PLAID_SECRET}"
+      PLAID_ENV: "${PLAID_ENV}"
+      PUBLIC_APP_URL: "${PUBLIC_APP_URL}"
+      WEBHOOK_SECRET: "${WEBHOOK_SECRET}"
     depends_on:
       postgres:
         condition: service_healthy
     restart: unless-stopped
 
 volumes:
-  paybank-postgres-data:
+  noor-postgres-data:

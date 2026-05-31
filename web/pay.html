@@ -3,57 +3,112 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Noor - Pay</title>
+<title>Noor — Pay</title>
 <style>
+@import url('https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+:root{
+  --clay:#C96442;--clay-50:#FBF3EE;--clay-100:#F4E1D6;--clay-600:#B5512F;--clay-700:#97421F;
+  --cream:#FAF9F5;--cream-deep:#F4F2EA;--manilla:#EFEADC;--surface:#FFFFFF;
+  --ink:#211F1A;--ink-2:#57534A;--ink-3:#8B857A;--ink-4:#B4AEA1;
+  --border:#E9E5DA;--border-strong:#DBD6C8;--border-ink:#C9C3B4;
+  --success:#3F6B34;--success-fill:#EAF1E1;--success-border:#CFE0BD;
+  --warning:#98671B;--warning-fill:#F7ECD6;--warning-border:#ECD8AE;
+  --info:#3E6486;--info-fill:#E5EDF3;--info-border:#C6D9E7;
+  --danger:#A8412A;--danger-fill:#F6E1D9;--danger-border:#E8C4B5;
+  --neutral:#5A5246;--neutral-fill:#EFEADD;--neutral-border:#DED6C5;
+  --r-xs:6px;--r-sm:8px;--r-md:12px;--r-lg:16px;--r-2xl:28px;--r-pill:999px;
+  --shadow-xs:0 1px 2px rgba(40,33,24,.05);--shadow-md:0 2px 4px rgba(40,33,24,.04),0 8px 20px rgba(40,33,24,.07);
+  --ring:0 0 0 3px rgba(201,100,66,.18);
+  --font-serif:'Newsreader',Georgia,serif;--font-sans:'Hanken Grotesk',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;--font-mono:'JetBrains Mono',ui-monospace,Menlo,monospace;
+}
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f0f2f5;color:#1a1f36;display:flex;justify-content:center;padding:40px 20px}
-.card{background:#fff;border-radius:12px;padding:32px;max-width:440px;width:100%;box-shadow:0 1px 3px rgba(50,50,93,.08),0 1px 2px rgba(0,0,0,.06)}
-h1{font-size:20px;margin-bottom:4px;color:#1a1f36}
-.sub{color:#5a6178;font-size:13px;margin-bottom:16px;text-align:center}
-.amount{font-size:40px;font-weight:700;margin:12px 0;text-align:center;color:#1a1f36}
-.amount small{font-size:16px;color:#8a94a6}
-#qrcode{margin:16px 0;min-height:160px;display:flex;justify-content:center;align-items:center}
-#qrcode svg{max-width:180px;border:1px solid #e6ebf1;border-radius:8px;padding:8px;background:#fff}
-.details{text-align:left;margin:16px 0;font-size:13px;border-top:1px solid #e6ebf1;padding-top:12px}
-.details div{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f0f2f5}
-.details span{color:#5a6178}
-.status{padding:4px 14px;border-radius:100px;font-size:12px;font-weight:600;display:inline-block}
-.status-pending{background:#fff4e5;color:#b76e00}
-.status-processing{background:#e3f2fd;color:#1565c0}
-.status-authorized{background:#e8f5e9;color:#2e7d32}
-.status-completed{background:#e8f5e9;color:#2e7d32}
-.status-expired{background:#fce4ec;color:#c62828}
-.error{color:#c62828;background:#fce4ec;padding:12px;border-radius:8px;margin:12px 0;font-size:13px}
-.loading{color:#8a94a6;margin:40px 0;text-align:center}
-.spinner{display:inline-block;width:24px;height:24px;border:3px solid #e6ebf1;border-top-color:#5469d4;border-radius:50%;animation:spin .8s linear infinite;margin-bottom:8px}
+body{font-family:var(--font-sans);background:var(--cream-deep);color:var(--ink);-webkit-font-smoothing:antialiased;min-height:100vh}
+.ic{display:inline-flex}.ic svg{display:block}
+.stage{display:grid;place-items:center;padding:44px 20px;min-height:100vh}
+.pay{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-2xl);box-shadow:var(--shadow-md);width:420px;max-width:100%;padding:30px 32px 26px}
+.pay-brand{display:flex;align-items:center;justify-content:center;gap:9px}
+.pay-glyph{width:28px;height:28px;border-radius:8px;background:var(--clay);position:relative;flex:none}
+.pay-word{font-family:var(--font-serif);font-size:19px;font-weight:500}
+.pay-sub{text-align:center;color:var(--ink-3);font-size:12.5px;margin-top:12px}
+.pay-amount{font-family:var(--font-serif);font-size:46px;font-weight:500;text-align:center;letter-spacing:-.01em;font-variant-numeric:tabular-nums;margin:4px 0 2px}
+.pay-amount small{font-size:17px;color:var(--ink-3);font-weight:400}
+.pay-status{text-align:center;margin:8px 0 4px}
+.nbadge{display:inline-flex;align-items:center;gap:6px;padding:4px 13px;border-radius:var(--r-pill);font-size:12px;font-weight:600;border:1px solid transparent}
+.nbadge.sm{padding:2px 9px;font-size:11px}
+.nbadge-dot{width:6px;height:6px;border-radius:50%;background:currentColor}
+.tone-warning{background:var(--warning-fill);color:var(--warning);border-color:var(--warning-border)}
+.tone-info{background:var(--info-fill);color:var(--info);border-color:var(--info-border)}
+.tone-success{background:var(--success-fill);color:var(--success);border-color:var(--success-border)}
+.tone-neutral{background:var(--neutral-fill);color:var(--neutral);border-color:var(--neutral-border)}
+.tone-danger{background:var(--danger-fill);color:var(--danger);border-color:var(--danger-border)}
+.qr-well{margin:18px auto;width:168px;height:168px;border-radius:var(--r-lg);background:var(--cream);border:1px solid var(--border);display:grid;place-items:center;overflow:hidden}
+.qr-well svg,.qr-well img{width:132px;height:132px}
+.details{border-top:1px solid var(--border);margin-top:18px;padding-top:6px}
+.drow{display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--border);font-size:13px}
+.drow:last-child{border-bottom:none}
+.drow .k{color:var(--ink-3)}.drow .v{color:var(--ink);font-weight:500}
+.drow .v.mono{font-family:var(--font-mono);font-size:12px;font-weight:400}
+.rail-tag{font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--ink-2);background:var(--cream-deep);border:1px solid var(--border);border-radius:var(--r-xs);padding:3px 8px}
+.linkrow{display:flex;align-items:center;gap:10px;padding:13px 14px;border-radius:var(--r-md);background:var(--cream);border:1px solid var(--border);margin-top:16px}
+.linkrow .li{width:34px;height:34px;border-radius:var(--r-sm);display:grid;place-items:center;background:var(--surface);border:1px solid var(--border);color:var(--clay-600);flex:none}
+.linkrow .lt{font-size:13px;font-weight:600}
+.linkrow .ls{font-size:11.5px;color:var(--ink-3)}
+.field{margin-top:12px}
+.field label{display:block;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-3);margin-bottom:5px}
+.field input{width:100%;padding:11px 13px;border:1px solid var(--border-strong);border-radius:var(--r-sm);font-size:14px;font-family:var(--font-sans);color:var(--ink);background:var(--surface);transition:.15s}
+.field input::placeholder{color:var(--ink-4)}
+.field input:focus{outline:none;border-color:var(--clay);box-shadow:var(--ring)}
+.field-row{display:grid;grid-template-columns:1fr 70px 90px;gap:8px}
+.btn{display:inline-flex;align-items:center;gap:7px;padding:9px 15px;border-radius:var(--r-sm);font-size:13px;font-weight:600;font-family:var(--font-sans);border:1px solid transparent;cursor:pointer;text-decoration:none;transition:.15s}
+.btn.secondary{background:var(--surface);color:var(--ink);border-color:var(--border-strong);box-shadow:var(--shadow-xs)}
+.btn.secondary:hover{background:var(--manilla)}
+.btn:disabled{opacity:.5;cursor:default}
+.pay-btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;border:none;border-radius:var(--r-md);padding:13px;font-size:14.5px;font-weight:600;font-family:var(--font-sans);cursor:pointer;transition:.15s;margin-top:16px;color:#fff;background:var(--clay)}
+.pay-btn:hover{background:var(--clay-600)}
+.pay-btn:disabled{opacity:.5;cursor:default}
+.note-line{display:flex;align-items:center;gap:8px;justify-content:center;margin-top:16px;font-size:11.5px;color:var(--ink-4)}
+.spinner{width:16px;height:16px;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite}
+.spinner-dark{width:24px;height:24px;border:2px solid var(--border-strong);border-top-color:var(--clay);border-radius:50%;animation:spin .7s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
-.btn{display:block;width:100%;padding:12px;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;margin-top:12px;transition:opacity .2s}
-.btn:hover{opacity:.9}
-.btn-primary{background:#5469d4;color:#fff}
-.btn-success{background:#2e7d32;color:#fff}
-.btn-secondary{background:#e6ebf1;color:#1a1f36}
-.btn:disabled{opacity:.5;cursor:not-allowed}
-input{width:100%;padding:10px 12px;border:1px solid #e6ebf1;border-radius:8px;font-size:13px;margin-bottom:8px;font-family:inherit}
-input:focus{outline:none;border-color:#5469d4}
-.row{display:flex;gap:8px}
+.done-check{width:56px;height:56px;border-radius:50%;background:var(--success-fill);color:var(--success);display:grid;place-items:center;margin:6px auto 0}
+.flash{padding:11px 14px;border-radius:var(--r-md);font-size:13px;font-weight:500;margin-top:14px;text-align:center}
+.flash.success{background:var(--success-fill);color:var(--success);border:1px solid var(--success-border)}
+.flash.info{background:var(--info-fill);color:var(--info);border:1px solid var(--info-border)}
+.flash.error{background:var(--danger-fill);color:var(--danger);border:1px solid var(--danger-border)}
+.powered{display:flex;align-items:center;justify-content:center;gap:6px;margin-top:18px;padding-top:14px;border-top:1px solid var(--border);font-size:11px;color:var(--ink-4)}
+.powered strong{color:var(--ink-2);font-weight:600}
+.loading{text-align:center;color:var(--ink-3);padding:48px 0}
+.loading .spinner-dark{margin:0 auto 12px}
 .hidden{display:none}
-.badge{display:inline-block;padding:2px 8px;border-radius:100px;font-size:11px;font-weight:600}
-.badge-linked{background:#e8f5e9;color:#2e7d32}
-.badge-not-linked{background:#fff4e5;color:#b76e00}
 </style>
 </head>
 <body>
-<div class="card">
-<h1 style="text-align:center">Payment Request</h1>
-<p class="sub">Scan or pay online</p>
-<div id="content">
-<div class="loading"><div class="spinner"></div><p>Loading payment details...</p></div>
-</div>
+<div class="stage">
+  <div class="pay">
+    <div class="pay-brand">
+      <span class="pay-glyph"><svg viewBox="0 0 28 28" style="position:absolute;inset:0"><path d="M19 8a7.6 7.6 0 1 0 0 12 6 6 0 1 1 0-12Z" fill="var(--cream)"/></svg></span>
+      <span class="pay-word">Noor</span>
+    </div>
+    <div class="pay-sub">Payment request · scan or pay online</div>
+    <div id="content">
+      <div class="loading"><div class="spinner-dark"></div><p>Loading payment details…</p></div>
+    </div>
+    <div class="powered">
+      <span class="ic" style="width:14px;height:14px"><svg viewBox="0 0 18 18"><circle cx="9" cy="9" r="9" fill="var(--clay)"/><path d="M12 4.4a5.6 5.6 0 1 0 0 9.2 4.4 4.4 0 1 1 0-9.2Z" fill="var(--cream)"/></svg></span>
+      Powered by <strong>Noor</strong>
+    </div>
+  </div>
 </div>
 
+<script src="https://unpkg.com/lucide@0.456.0/dist/umd/lucide.min.js"></script>
 <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
 <script>
 const SESSION_ID = '__SESSION_ID__';
+
+const STATUS_TONE = { pending:'warning', authorized:'info', processing:'info', completed:'success', expired:'danger' };
+const STATUS_LABEL = { pending:'Pending', authorized:'Authorized', processing:'Processing', completed:'Completed', expired:'Expired' };
+const icons = () => { if (window.lucide) lucide.createIcons({ attrs: { 'stroke-width': 1.75 } }); };
+const fmt = (cents) => '$' + (cents/100).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
 
 async function load() {
   const el = document.getElementById('content');
@@ -61,101 +116,84 @@ async function load() {
     const res = await fetch('/api/sessions/' + SESSION_ID);
     if (!res.ok) throw new Error(await res.text() || 'Failed to load');
     const s = await res.json();
-    const expired = s.status === 'expired' || new Date(s.expires_at) < new Date();
-
-    const hasBank = s.customer_account_number && s.customer_account_number.length > 0;
+    const hasBank = !!s.bank_linked;
+    const pending = s.status === 'pending';
+    const tone = STATUS_TONE[s.status] || 'neutral';
 
     el.innerHTML = `
-      <div class="amount">$${(s.amount_cents / 100).toFixed(2)} <small>${s.currency}</small></div>
-      <div style="text-align:center;margin:8px 0">
-        <span class="status status-${s.status}">${s.status.toUpperCase()}</span>
-      </div>
-      <div id="qrcode"><div class="spinner"></div></div>
+      <div class="pay-amount">${fmt(s.amount_cents)} <small>${s.currency}</small></div>
+      <div class="pay-status"><span class="nbadge tone-${tone}"><span class="nbadge-dot"></span>${STATUS_LABEL[s.status]||s.status}</span></div>
+
+      ${s.status === 'completed' ? `
+        <div class="done-check"><i data-lucide="check" style="width:28px;height:28px"></i></div>
+        <div class="flash success" style="font-weight:600">Payment completed — funds settled instantly</div>
+      ` : `
+        <div class="qr-well"><div class="spinner-dark"></div></div>
+      `}
+
       <div class="details">
-        <div><span>Session</span> ${s.id.slice(0,8)}…</div>
-        <div><span>Rail</span> ${s.rail_used || '—'}</div>
-        <div><span>Bank</span> ${s.bank_id}</div>
-        <div><span>Expires</span> ${new Date(s.expires_at).toLocaleString()}</div>
-        ${s.note ? `<div><span>Note</span> ${s.note}</div>` : ''}
-        <div><span>Bank Linked</span> <span class="badge ${hasBank ? 'badge-linked' : 'badge-not-linked'}">${hasBank ? 'Yes' : 'No'}</span></div>
+        <div class="drow"><span class="k">Bank</span><span class="v">${s.bank_id}</span></div>
+        <div class="drow"><span class="k">Rail</span><span class="v"><span class="rail-tag">${(s.rail_used||'—').toUpperCase()}</span></span></div>
+        ${s.note ? `<div class="drow"><span class="k">Note</span><span class="v">${s.note}</span></div>` : ''}
+        <div class="drow"><span class="k">Expires</span><span class="v">${new Date(s.expires_at).toLocaleDateString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}</span></div>
+        <div class="drow"><span class="k">Bank linked</span><span class="v"><span class="nbadge sm tone-${hasBank?'success':'warning'}">${hasBank?'Yes':'No'}</span></span></div>
       </div>
-      <div id="bank-section" class="${s.status !== 'pending' ? 'hidden' : ''}">
-        <hr style="border:none;border-top:1px solid #e6ebf1;margin:12px 0">
-        <div id="plaid-status" style="font-size:12px;color:#5a6178;margin-bottom:8px;text-align:center">
-          ${hasBank ? '<span class="badge badge-linked">Bank linked via Plaid</span>' : ''}
-        </div>
-        <button id="link-btn" class="btn btn-secondary" ${s.status !== 'pending' ? 'disabled' : ''}>
-          ${hasBank ? 'Change Bank' : 'Link Bank Account'}
-        </button>
-        <div id="confirm-section">
-          <input id="customer-name" placeholder="Full Name" value="${s.customer_name || ''}" ${s.status !== 'pending' ? 'disabled' : ''}>
-          <input id="customer-address" placeholder="Street Address" value="${s.customer_address_line_1 || ''}" ${s.status !== 'pending' ? 'disabled' : ''}>
-          <div class="row">
-            <input id="customer-city" placeholder="City" value="${s.customer_address_city || ''}" ${s.status !== 'pending' ? 'disabled' : ''}>
-            <input id="customer-state" placeholder="State" value="${s.customer_address_state || ''}" style="max-width:80px" ${s.status !== 'pending' ? 'disabled' : ''}>
-            <input id="customer-zip" placeholder="Zip" value="${s.customer_address_postal_code || ''}" style="max-width:100px" ${s.status !== 'pending' ? 'disabled' : ''}>
+
+      <div id="bank-section" class="${pending?'':'hidden'}">
+        <div class="linkrow">
+          <div class="li"><i data-lucide="${hasBank?'check':'landmark'}" style="width:17px;height:17px"></i></div>
+          <div style="flex:1">
+            <div class="lt" id="link-title">${hasBank?'Bank account linked':'Link your bank account'}</div>
+            <div class="ls">${hasBank?'Verified via Plaid':'Securely connect with Plaid'}</div>
           </div>
-          <button id="confirm-btn" class="btn btn-primary" ${s.status !== 'pending' ? 'disabled' : ''}>
-            ${s.status === 'pending' ? 'Confirm & Pay' : 'Already ' + s.status}
-          </button>
+          <button id="link-btn" class="btn secondary">${hasBank?'Change':'Link'}</button>
         </div>
+        <div class="field"><label>Full name</label><input id="customer-name" placeholder="Full name" value="${s.customer_name||''}"></div>
+        <div class="field"><label>Street address</label><input id="customer-address" placeholder="Street address" value="${s.customer_address_line_1||''}"></div>
+        <div class="field field-row">
+          <input id="customer-city" placeholder="City" value="${s.customer_address_city||''}">
+          <input id="customer-state" placeholder="State" value="${s.customer_address_state||''}">
+          <input id="customer-zip" placeholder="ZIP" value="${s.customer_address_postal_code||''}">
+        </div>
+        <button id="confirm-btn" class="pay-btn"><i data-lucide="lock" style="width:15px;height:15px"></i>Confirm &amp; pay ${fmt(s.amount_cents)}</button>
+        <div class="note-line"><i data-lucide="shield-check" style="width:13px;height:13px"></i>Bank-grade encryption · funds move in seconds</div>
       </div>
       <div id="status-msg"></div>
     `;
+    icons();
 
-    fetch('/api/sessions/' + SESSION_ID + '/qr')
-      .then(r => { if (!r.ok) throw new Error('QR failed'); return r.text(); })
-      .then(svg => { const q = document.getElementById('qrcode'); if (q) q.innerHTML = svg; })
-      .catch(() => { const q = document.getElementById('qrcode'); if (q) q.innerHTML = '<p style="color:#8a94a6;font-size:12px">QR unavailable</p>'; });
+    if (s.status !== 'completed') {
+      fetch('/api/sessions/' + SESSION_ID + '/qr')
+        .then(r => { if (!r.ok) throw new Error(); return r.text(); })
+        .then(svg => { const q = document.querySelector('.qr-well'); if (q) q.innerHTML = svg; })
+        .catch(() => { const q = document.querySelector('.qr-well'); if (q) q.innerHTML = '<span style="color:var(--ink-4);font-size:12px">QR unavailable</span>'; });
+    }
 
     document.getElementById('link-btn')?.addEventListener('click', openPlaidLink);
     document.getElementById('confirm-btn')?.addEventListener('click', confirmPayment);
   } catch (e) {
-    el.innerHTML = '<div class="error">' + e.message + '</div>';
+    el.innerHTML = '<div class="flash error">' + e.message + '</div>';
   }
 }
 
 function openPlaidLink() {
   const btn = document.getElementById('link-btn');
-  btn.disabled = true;
-  btn.textContent = 'Connecting...';
-
+  btn.disabled = true; btn.textContent = 'Connecting…';
   fetch('/api/plaid/link-token?session_id=' + SESSION_ID)
     .then(r => r.json())
     .then(data => {
       const handler = Plaid.create({
         token: data.link_token,
         onSuccess: (public_token) => {
-          fetch('/api/plaid/exchange', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ session_id: SESSION_ID, public_token })
-          })
-          .then(r => r.json())
-          .then(() => {
-            document.getElementById('plaid-status').innerHTML = '<span class="badge badge-linked">Bank linked successfully</span>';
-            btn.textContent = 'Change Bank';
-            btn.disabled = false;
-            load();
-          })
-          .catch(() => {
-            document.getElementById('plaid-status').textContent = 'Failed to link bank. Try again.';
-            btn.textContent = 'Link Bank Account';
-            btn.disabled = false;
-          });
+          fetch('/api/plaid/exchange', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ session_id: SESSION_ID, public_token }) })
+            .then(r => r.json()).then(() => load())
+            .catch(() => { btn.textContent = 'Link'; btn.disabled = false; });
         },
-        onExit: () => {
-          btn.textContent = 'Link Bank Account';
-          btn.disabled = false;
-        }
+        onExit: () => { btn.textContent = 'Link'; btn.disabled = false; }
       });
       handler.open();
     })
-    .catch(() => {
-      document.getElementById('plaid-status').textContent = 'Failed to get link token.';
-      btn.textContent = 'Link Bank Account';
-      btn.disabled = false;
-    });
+    .catch(() => { btn.textContent = 'Link'; btn.disabled = false; });
 }
 
 async function confirmPayment() {
@@ -164,68 +202,42 @@ async function confirmPayment() {
   const city = document.getElementById('customer-city')?.value.trim();
   const state = document.getElementById('customer-state')?.value.trim();
   const zip = document.getElementById('customer-zip')?.value.trim();
-
-  if (!name || !addr || !city || !state || !zip) {
-    document.getElementById('status-msg').innerHTML = '<div class="error">Please fill in all fields</div>';
-    return;
-  }
+  const msg = document.getElementById('status-msg');
+  if (!name || !addr || !city || !state || !zip) { msg.innerHTML = '<div class="flash error">Please fill in all fields</div>'; return; }
 
   const btn = document.getElementById('confirm-btn');
-  btn.disabled = true;
-  btn.textContent = 'Confirming...';
-
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Processing payment…';
   try {
     const res = await fetch('/api/sessions/' + SESSION_ID + '/confirm', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({
-        session_id: SESSION_ID,
-        customer_name: name,
-        customer_address_line_1: addr,
-        customer_city: city,
-        customer_state: state,
-        customer_postal_code: zip,
-        customer_country_code: 'US'
-      })
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ session_id: SESSION_ID, customer_name:name, customer_address_line_1:addr, customer_city:city, customer_state:state, customer_postal_code:zip, customer_country_code:'US' })
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Confirmation failed');
-    document.getElementById('status-msg').innerHTML = '<div style="color:#2e7d32;background:#e8f5e9;padding:8px;border-radius:8px;font-size:13px;text-align:center;margin-top:8px">Payment authorized! Waiting for settlement...</div>';
-    btn.textContent = 'Confirmed ✓';
+    msg.innerHTML = '<div class="flash info">Payment authorized — waiting for settlement…</div>';
+    btn.innerHTML = 'Confirmed';
     connectSSE();
   } catch (e) {
-    document.getElementById('status-msg').innerHTML = '<div class="error">' + e.message + '</div>';
-    btn.disabled = false;
-    btn.textContent = 'Confirm & Pay';
+    msg.innerHTML = '<div class="flash error">' + e.message + '</div>';
+    btn.disabled = false; btn.innerHTML = '<i data-lucide="lock" style="width:15px;height:15px"></i>Confirm & pay'; icons();
   }
 }
 
 function connectSSE() {
-  const evtSource = new EventSource('/api/sessions/' + SESSION_ID + '/stream');
-  evtSource.onmessage = (event) => {
+  const evt = new EventSource('/api/sessions/' + SESSION_ID + '/stream');
+  evt.onmessage = (event) => {
     try {
       const data = JSON.parse(event.data);
-      const statusEl = document.getElementById('status-msg');
-      if (data.status === 'completed') {
-        statusEl.innerHTML = '<div style="color:#2e7d32;background:#e8f5e9;padding:12px;border-radius:8px;font-size:14px;text-align:center;margin-top:8px;font-weight:600">&#10003; Payment completed!</div>';
-        load();
-        evtSource.close();
-      } else if (data.status === 'processing') {
-        statusEl.innerHTML = '<div style="color:#1565c0;background:#e3f2fd;padding:8px;border-radius:8px;font-size:13px;text-align:center;margin-top:8px">Processing payment...</div>';
-      } else if (data.status === 'expired') {
-        statusEl.innerHTML = '<div class="error">Payment expired or failed.</div>';
-        load();
-        evtSource.close();
-      }
+      const msg = document.getElementById('status-msg');
+      if (data.status === 'completed') { load(); evt.close(); }
+      else if (data.status === 'processing' && msg) { msg.innerHTML = '<div class="flash info">Processing payment…</div>'; }
+      else if (data.status === 'expired') { if (msg) msg.innerHTML = '<div class="flash error">Payment expired or failed.</div>'; load(); evt.close(); }
     } catch (e) {}
   };
-  evtSource.onerror = () => {};
+  evt.onerror = () => {};
 }
 
-if (SESSION_ID) {
-  load();
-  connectSSE();
-}
+if (SESSION_ID) { load(); connectSSE(); }
 </script>
 </body>
 </html>

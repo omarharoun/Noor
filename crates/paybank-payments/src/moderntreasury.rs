@@ -154,6 +154,7 @@ pub async fn create_transfer(
     rail: &PaymentRail,
     amount_cents: i64,
     description: &str,
+    idempotency_key: &str,
 ) -> Result<PaymentOrderResponse, AppError> {
     let client = mt_client()?;
 
@@ -174,24 +175,29 @@ pub async fn create_transfer(
         currency: "USD".to_string(),
     };
 
+    // Idempotency-Key makes a retried POST reuse the same payment order instead
+    // of creating a duplicate transfer (MT honors this header).
     let resp = client
         .post(&format!("{}/payment_orders", MT_BASE_URL))
+        .header("Idempotency-Key", idempotency_key)
         .json(&request)
         .send()
         .await
-        .map_err(|e| AppError::ModernTreasuryError(e.to_string()))?;
+        // A transport error (timeout/dropped connection) is AMBIGUOUS: the order
+        // may have been created server-side. Never treat it as a definitive fail.
+        .map_err(|e| AppError::ProviderAmbiguous(format!("MT payment order send failed: {e}")))?;
 
     if !resp.status().is_success() {
         let status = resp.status();
         let body = resp.text().await.unwrap_or_default();
-        warn!(
-            "MT payment order failed: HTTP {} - {}",
-            status, body
-        );
-        return Err(AppError::ModernTreasuryError(format!(
-            "Payment order failed: HTTP {} - {}",
-            status, body
-        )));
+        warn!("MT payment order failed: HTTP {} - {}", status, body);
+        let msg = format!("Payment order failed: HTTP {} - {}", status, body);
+        // 5xx (and 429) are ambiguous/retryable; 4xx is a definitive rejection.
+        return Err(if status.is_server_error() || status.as_u16() == 429 {
+            AppError::ProviderAmbiguous(msg)
+        } else {
+            AppError::ModernTreasuryError(msg)
+        });
     }
 
     let order: PaymentOrderResponse = resp

@@ -43,17 +43,23 @@ pub async fn initiate_session(
         counterparty_id
     };
 
-    session_repo::update_status(
+    // P0: atomic claim — only an `authorized` session transitions to `processing`,
+    // and only one caller wins, preventing duplicate transfers on retry/double-submit.
+    let claimed = session_repo::try_transition(
         &state.db.pool,
         req.session_id,
+        &[SessionStatus::Authorized],
         &SessionStatus::Processing,
         None,
     )
     .await?;
+    if !claimed {
+        return Err(AppError::InvalidStateTransition);
+    }
 
     let result = paybank_payments::initiate_transfer(
         req.session_id,
-        &actual_recipient_id,
+        actual_recipient_id,
         rail,
         session.amount_cents,
         &format!("Session {}", req.session_id),
@@ -62,27 +68,59 @@ pub async fn initiate_session(
 
     match result {
         Ok(transfer) => {
-            session_repo::update_status(
+            // Only the caller that wins Processing -> Completed records the
+            // settlement, so a webhook/reconcile that already settled this session
+            // can't trigger a second transaction/ledger posting (TOCTOU guard).
+            let won = session_repo::try_transition(
                 &state.db.pool,
                 req.session_id,
+                &[SessionStatus::Processing],
                 &SessionStatus::Completed,
                 Some(&transfer.provider_transfer_id),
             )
             .await?;
 
             let txn_id = Uuid::new_v4();
-            paybank_db::transaction_repo::create_transaction(
-                &state.db.pool,
-                txn_id,
-                req.session_id,
-                session.merchant_id,
-                session.amount_cents,
-                rail,
-                Some(&transfer.provider_transfer_id),
-                &format!("txn_{}", req.session_id),
-                chrono::Utc::now(),
-            )
-            .await?;
+            if won {
+                paybank_db::transaction_repo::create_transaction(
+                    &state.db.pool,
+                    txn_id,
+                    req.session_id,
+                    session.merchant_id,
+                    session.amount_cents,
+                    rail,
+                    Some(&transfer.provider_transfer_id),
+                    &format!("txn_{}", req.session_id),
+                    chrono::Utc::now(),
+                )
+                .await?;
+
+                // Ledger failure must NOT fail the response — the transfer already
+                // succeeded; log loudly for reconciliation instead.
+                if let Err(e) = paybank_db::ledger_repo::LedgerRepo::record_settlement(
+                    &state.db.pool,
+                    session.merchant_id,
+                    req.session_id,
+                    session.amount_cents,
+                )
+                .await
+                {
+                    tracing::error!(
+                        session_id = %req.session_id,
+                        error = %e,
+                        "transfer settled but ledger posting failed — needs reconciliation"
+                    );
+                }
+
+                let _ = paybank_db::webhook_repo::enqueue(
+                    &state.db.pool,
+                    session.merchant_id,
+                    Some(req.session_id),
+                    "session.completed",
+                    serde_json::json!({ "session_id": req.session_id, "status": "completed", "amount_cents": session.amount_cents }),
+                )
+                .await;
+            }
 
             Ok(Json(serde_json::json!({
                 "status": "completed",
@@ -90,13 +128,25 @@ pub async fn initiate_session(
             })))
         }
         Err(e) => {
-            session_repo::update_status(
-                &state.db.pool,
-                req.session_id,
-                &SessionStatus::Expired,
-                None,
-            )
-            .await?;
+            if matches!(e, AppError::ProviderAmbiguous(_)) {
+                // Outcome unknown — the transfer may have gone through. Leave the
+                // session Processing for a webhook / reconciliation job to settle;
+                // marking it Failed here would be a money-state lie.
+                tracing::warn!(
+                    session_id = %req.session_id,
+                    error = %e,
+                    "ambiguous transfer outcome; leaving session Processing for reconciliation"
+                );
+            } else {
+                session_repo::try_transition(
+                    &state.db.pool,
+                    req.session_id,
+                    &[SessionStatus::Processing],
+                    &SessionStatus::Failed,
+                    None,
+                )
+                .await?;
+            }
             Err(e)
         }
     }

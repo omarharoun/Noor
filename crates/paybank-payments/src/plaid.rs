@@ -2,7 +2,15 @@ use paybank_core::AppError;
 use serde::{Deserialize, Serialize};
 use tracing::info;
 
-const PLAID_BASE_URL: &str = "https://sandbox.plaid.com";
+/// Plaid host, selected by PLAID_ENV (sandbox | development | production).
+/// Defaults to sandbox so a misconfigured prod deploy fails safe.
+fn plaid_base_url() -> String {
+    match std::env::var("PLAID_ENV").as_deref() {
+        Ok("production") => "https://production.plaid.com".to_string(),
+        Ok("development") => "https://development.plaid.com".to_string(),
+        _ => "https://sandbox.plaid.com".to_string(),
+    }
+}
 
 fn client() -> Result<reqwest::Client, AppError> {
     reqwest::Client::builder()
@@ -137,7 +145,7 @@ pub async fn create_link_token(session_id: &uuid::Uuid) -> Result<String, AppErr
     };
 
     let resp = c
-        .post(&format!("{}/link/token/create", PLAID_BASE_URL))
+        .post(&format!("{}/link/token/create", plaid_base_url()))
         .json(&request)
         .send()
         .await
@@ -163,7 +171,7 @@ pub async fn exchange_public_token(public_token: &str) -> Result<String, AppErro
     };
 
     let resp = c
-        .post(&format!("{}/item/public_token/exchange", PLAID_BASE_URL))
+        .post(&format!("{}/item/public_token/exchange", plaid_base_url()))
         .json(&request)
         .send()
         .await
@@ -192,7 +200,7 @@ pub async fn get_auth(access_token: &str) -> Result<Vec<BankAccountDetails>, App
     };
 
     let resp = c
-        .post(&format!("{}/auth/get", PLAID_BASE_URL))
+        .post(&format!("{}/auth/get", plaid_base_url()))
         .json(&request)
         .send()
         .await

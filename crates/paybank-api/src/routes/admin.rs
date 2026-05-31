@@ -4,10 +4,33 @@ use axum::{
     http::StatusCode,
     Json,
 };
-use paybank_core::AppError;
+use paybank_core::{AppError, Merchant};
 use paybank_db::admin_repo;
 use serde::Deserialize;
 use uuid::Uuid;
+
+/// Project a Merchant to a safe response — NEVER expose password_hash or api_key
+/// to the operator console (P0: these were previously serialized in full).
+fn redact_merchant(m: &Merchant) -> serde_json::Value {
+    serde_json::json!({
+        "id": m.id,
+        "name": m.name,
+        "email": m.email,
+        "webhook_url": m.webhook_url,
+        "business_name": m.business_name,
+        "business_type": m.business_type,
+        "registration_number": m.registration_number,
+        "tax_id": m.tax_id,
+        "industry_category": m.industry_category,
+        "website_url": m.website_url,
+        "status": m.status,
+        "kyc_status": m.kyc_status,
+        "risk_level": m.risk_level,
+        "onboarding_completed_at": m.onboarding_completed_at,
+        "created_at": m.created_at,
+        "updated_at": m.updated_at,
+    })
+}
 
 #[derive(Deserialize)]
 pub struct PaginationQuery {
@@ -89,6 +112,7 @@ pub async fn list_merchants(
     let (merchants, total) = admin_repo::list_merchants(&state.db.pool, limit, offset)
         .await
         .map_err(|e| AppError::Internal(e))?;
+    let merchants: Vec<_> = merchants.iter().map(redact_merchant).collect();
     Ok(Json(serde_json::json!({ "merchants": merchants, "total": total })))
 }
 
@@ -99,7 +123,7 @@ pub async fn get_merchant(
     let merchant = admin_repo::get_merchant(&state.db.pool, id)
         .await
         .map_err(|e| AppError::Internal(e))?;
-    Ok(Json(serde_json::to_value(merchant).unwrap()))
+    Ok(Json(merchant.as_ref().map(redact_merchant).unwrap_or(serde_json::Value::Null)))
 }
 
 pub async fn create_merchant(
@@ -110,10 +134,7 @@ pub async fn create_merchant(
     let merchant = admin_repo::create_merchant(&state.db.pool, &body.name, &body.email, &api_key)
         .await
         .map_err(|e| AppError::Internal(e))?;
-    Ok((
-        StatusCode::CREATED,
-        Json(serde_json::to_value(merchant).unwrap()),
-    ))
+    Ok((StatusCode::CREATED, Json(redact_merchant(&merchant))))
 }
 
 pub async fn update_merchant(
@@ -133,7 +154,7 @@ pub async fn update_merchant(
     )
     .await
     .map_err(|e| AppError::Internal(e))?;
-    Ok(Json(serde_json::to_value(merchant).unwrap()))
+    Ok(Json(redact_merchant(&merchant)))
 }
 
 pub async fn list_banks(
@@ -164,4 +185,15 @@ pub async fn list_webhooks(
         .await
         .map_err(|e| AppError::Internal(e))?;
     Ok(Json(serde_json::json!({ "events": events, "total": total })))
+}
+
+/// Requeue a failed/exhausted webhook event for immediate redelivery.
+pub async fn retry_webhook(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let requeued = paybank_db::webhook_repo::retry_now(&state.db.pool, id)
+        .await
+        .map_err(|e| AppError::Internal(e.into()))?;
+    Ok(Json(serde_json::json!({ "requeued": requeued })))
 }

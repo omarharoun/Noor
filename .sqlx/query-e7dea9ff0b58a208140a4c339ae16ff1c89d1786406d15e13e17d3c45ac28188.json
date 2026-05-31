@@ -1,0 +1,72 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id, session_id, merchant_id, amount_cents, rail_used as \"rail_used: PaymentRail\", column_ref, reference, settled_at, created_at\n           FROM transactions WHERE merchant_id = $1\n           ORDER BY created_at DESC LIMIT $2 OFFSET $3",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "session_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "merchant_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "amount_cents",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 4,
+        "name": "rail_used: PaymentRail",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "column_ref",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "reference",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "settled_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 8,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "e7dea9ff0b58a208140a4c339ae16ff1c89d1786406d15e13e17d3c45ac28188"
+}

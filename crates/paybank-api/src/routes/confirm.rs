@@ -3,10 +3,10 @@ use axum::{extract::State, Json};
 use paybank_core::{AppError, SessionStatus};
 use paybank_db::session_repo;
 use paybank_payments::BankAccountDetails;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 pub struct ConfirmRequest {
     pub session_id: Uuid,
     pub customer_name: String,
@@ -19,6 +19,7 @@ pub struct ConfirmRequest {
 
 pub async fn confirm_payment(
     State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
     Json(req): Json<ConfirmRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let session = session_repo::get_session(&state.db.pool, req.session_id)
@@ -30,6 +31,51 @@ pub async fn confirm_payment(
     }
     if session.status == SessionStatus::Completed {
         return Ok(Json(serde_json::json!({ "status": "completed" })));
+    }
+
+    // Fail-closed compliance gate: merchant KYC + customer sanctions screening.
+    // Authorize is the single chokepoint before money can move, so gating here
+    // transitively gates the initiate endpoints (which require Authorized).
+    crate::compliance::gate(
+        &state.db.pool,
+        session.merchant_id,
+        &req.customer_name,
+        &req.customer_address_line_1,
+    )
+    .await?;
+
+    // Optional idempotency keyed on the session's merchant — prevents a retry
+    // from creating a SECOND Modern Treasury counterparty for the same session.
+    let idem_key = crate::idempotency::key_from(&headers);
+    if let Some(key) = &idem_key {
+        let request_hash = crate::idempotency::hash(&req);
+        match crate::idempotency::begin(&state.db, session.merchant_id, key, &request_hash).await? {
+            crate::idempotency::Outcome::Replay(body) => return Ok(Json(body)),
+            crate::idempotency::Outcome::Proceed => {}
+        }
+    }
+
+    // Atomic claim: only one caller transitions Pending -> Authorized. This makes
+    // confirm safe against double-submit even WITHOUT an idempotency key (the pay
+    // page sends none), so a second click can't create a second MT counterparty.
+    let claimed = session_repo::try_transition(
+        &state.db.pool,
+        req.session_id,
+        &[SessionStatus::Pending],
+        &SessionStatus::Authorized,
+        None,
+    )
+    .await?;
+    if !claimed {
+        // Lost the race, or already past pending — report current state idempotently.
+        let current = session_repo::get_session(&state.db.pool, req.session_id)
+            .await?
+            .map(|s| s.status)
+            .unwrap_or(SessionStatus::Authorized);
+        return Ok(Json(serde_json::json!({
+            "status": current,
+            "session_id": req.session_id,
+        })));
     }
 
     session_repo::update_customer_details(
@@ -65,7 +111,22 @@ pub async fn confirm_payment(
             current_balance: None,
             iso_currency_code: None,
         };
-        let result = paybank_payments::create_counterparty(&details, &req.customer_name).await?;
+        let result = match paybank_payments::create_counterparty(&details, &req.customer_name).await {
+            Ok(r) => r,
+            Err(e) => {
+                // We already claimed Authorized; mark Failed so the session is a
+                // clear terminal (not a silent authorized-without-counterparty).
+                let _ = session_repo::try_transition(
+                    &state.db.pool,
+                    req.session_id,
+                    &[SessionStatus::Authorized],
+                    &SessionStatus::Failed,
+                    None,
+                )
+                .await;
+                return Err(e);
+            }
+        };
         let stored = format!("{}|{}", result.counterparty_id, result.external_account_id);
         session_repo::update_counterparty_id(&state.db.pool, req.session_id, &stored)
             .await?;
@@ -74,17 +135,26 @@ pub async fn confirm_payment(
         None
     };
 
-    session_repo::update_status(
-        &state.db.pool,
-        req.session_id,
-        &SessionStatus::Authorized,
-        None,
-    )
-    .await?;
+    // Status already set to Authorized by the atomic claim above.
 
-    Ok(Json(serde_json::json!({
+    let _ = paybank_db::webhook_repo::enqueue(
+        &state.db.pool,
+        session.merchant_id,
+        Some(req.session_id),
+        "session.authorized",
+        serde_json::json!({ "session_id": req.session_id, "status": "authorized" }),
+    )
+    .await;
+
+    let response = serde_json::json!({
         "status": "authorized",
         "session_id": req.session_id,
         "counterparty_id": counterparty_id,
-    })))
+    });
+
+    if let Some(key) = &idem_key {
+        crate::idempotency::complete(&state.db, session.merchant_id, key, &response).await?;
+    }
+
+    Ok(Json(response))
 }

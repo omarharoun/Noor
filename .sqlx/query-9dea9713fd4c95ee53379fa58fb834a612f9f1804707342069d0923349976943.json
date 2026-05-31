@@ -1,0 +1,65 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT idempotency_key, merchant_id, request_hash, response_status, response_body as \"response_body: serde_json::Value\", state, created_at, expires_at\n            FROM idempotency_keys\n            WHERE merchant_id = $1 AND idempotency_key = $2\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "idempotency_key",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "merchant_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "request_hash",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "response_status",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 4,
+        "name": "response_body: serde_json::Value",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 5,
+        "name": "state",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 7,
+        "name": "expires_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "9dea9713fd4c95ee53379fa58fb834a612f9f1804707342069d0923349976943"
+}
