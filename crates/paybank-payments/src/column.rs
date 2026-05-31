@@ -11,7 +11,7 @@ const COLUMN_BASE_URL: &str = "https://api.column.com";
 fn client() -> Result<Client, AppError> {
     let api_key = std::env::var("COLUMN_API_KEY")
         .map_err(|_| AppError::ColumnError("COLUMN_API_KEY not set".into()))?;
-    Ok(Client::builder()
+    Client::builder()
         .timeout(std::time::Duration::from_secs(15))
         .default_headers({
             let mut h = reqwest::header::HeaderMap::new();
@@ -29,7 +29,7 @@ fn client() -> Result<Client, AppError> {
             h
         })
         .build()
-        .map_err(|e| AppError::ColumnError(e.to_string()))?)
+        .map_err(|e| AppError::ColumnError(e.to_string()))
 }
 
 #[derive(Debug, Serialize)]
@@ -104,7 +104,7 @@ pub async fn create_counterparty(
     };
 
     let entity_resp = c
-        .post(&format!("{}/entities", COLUMN_BASE_URL))
+        .post(format!("{}/entities", COLUMN_BASE_URL))
         .json(&create_entity)
         .send()
         .await
@@ -125,7 +125,7 @@ pub async fn create_counterparty(
     };
 
     let acct_resp = c
-        .post(&format!("{}/accounts", COLUMN_BASE_URL))
+        .post(format!("{}/accounts", COLUMN_BASE_URL))
         .json(&create_account)
         .send()
         .await
@@ -164,7 +164,7 @@ pub async fn create_transfer(
     };
 
     let resp = c
-        .post(&format!("{}/transfers", COLUMN_BASE_URL))
+        .post(format!("{}/transfers", COLUMN_BASE_URL))
         .header("Idempotency-Key", idempotency_key)
         .json(&request)
         .send()
@@ -197,7 +197,7 @@ pub async fn get_transfer_status(transfer_id: &str) -> Result<String, AppError> 
     let c = client()?;
 
     let resp = c
-        .get(&format!("{}/transfers/{}", COLUMN_BASE_URL, transfer_id))
+        .get(format!("{}/transfers/{}", COLUMN_BASE_URL, transfer_id))
         .send()
         .await
         .map_err(|e| AppError::ColumnError(e.to_string()))?;

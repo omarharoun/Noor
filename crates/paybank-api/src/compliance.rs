@@ -28,7 +28,10 @@ pub async fn screen_customer(name: &str, _address: &str) -> Result<Screen, AppEr
             reason: Some("name matched a sanctions list entry".into()),
         });
     }
-    Ok(Screen { cleared: true, reason: None })
+    Ok(Screen {
+        cleared: true,
+        reason: None,
+    })
 }
 
 #[cfg(test)]
@@ -101,6 +104,7 @@ mod tests {
 /// Fail-closed gate run before a session is authorized:
 ///   1. the merchant must be KYC-verified, and
 ///   2. the customer must clear sanctions screening.
+///
 /// Any screening provider error denies.
 pub async fn gate(
     pool: &PgPool,
@@ -121,7 +125,8 @@ pub async fn gate(
     match screen_customer(customer_name, customer_address).await {
         Ok(s) if s.cleared => Ok(()),
         Ok(s) => Err(AppError::ComplianceRejected(
-            s.reason.unwrap_or_else(|| "sanctions screening failed".into()),
+            s.reason
+                .unwrap_or_else(|| "sanctions screening failed".into()),
         )),
         // Fail closed: never authorize money movement when screening is down.
         Err(_) => Err(AppError::ComplianceRejected(

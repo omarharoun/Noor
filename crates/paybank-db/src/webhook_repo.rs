@@ -63,13 +63,15 @@ pub async fn claim_due(pool: &PgPool, limit: i64) -> Result<Vec<DueWebhook>, sql
     .await?;
     Ok(rows
         .into_iter()
-        .map(|(id, merchant_id, event_type, payload, attempts)| DueWebhook {
-            id,
-            merchant_id,
-            event_type,
-            payload,
-            attempts,
-        })
+        .map(
+            |(id, merchant_id, event_type, payload, attempts)| DueWebhook {
+                id,
+                merchant_id,
+                event_type,
+                payload,
+                attempts,
+            },
+        )
         .collect())
 }
 

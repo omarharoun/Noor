@@ -64,19 +64,54 @@ async fn apply_webhook_status(
     let tref = (!transfer_id.is_empty()).then_some(transfer_id);
     let changed = match new_status {
         Completed => {
-            session_repo::try_transition(pool, session_id, &[Pending, Authorized, Processing], &Completed, tref).await?
+            session_repo::try_transition(
+                pool,
+                session_id,
+                &[Pending, Authorized, Processing],
+                &Completed,
+                tref,
+            )
+            .await?
         }
         Failed => {
-            session_repo::try_transition(pool, session_id, &[Pending, Authorized, Processing], &Failed, tref).await?
+            session_repo::try_transition(
+                pool,
+                session_id,
+                &[Pending, Authorized, Processing],
+                &Failed,
+                tref,
+            )
+            .await?
         }
         Processing => {
-            session_repo::try_transition(pool, session_id, &[Pending, Authorized], &Processing, tref).await?
+            session_repo::try_transition(
+                pool,
+                session_id,
+                &[Pending, Authorized],
+                &Processing,
+                tref,
+            )
+            .await?
         }
         Returned => {
-            session_repo::try_transition(pool, session_id, &[Completed, Processing], &Returned, tref).await?
+            session_repo::try_transition(
+                pool,
+                session_id,
+                &[Completed, Processing],
+                &Returned,
+                tref,
+            )
+            .await?
         }
         Reversed => {
-            session_repo::try_transition(pool, session_id, &[Completed, Processing], &Reversed, tref).await?
+            session_repo::try_transition(
+                pool,
+                session_id,
+                &[Completed, Processing],
+                &Reversed,
+                tref,
+            )
+            .await?
         }
         _ => false,
     };
@@ -115,14 +150,20 @@ async fn apply_webhook_status(
                 // settlement journal must be posted HERE.
                 Completed => Some(
                     paybank_db::ledger_repo::LedgerRepo::record_settlement(
-                        pool, s.merchant_id, session_id, s.amount_cents,
+                        pool,
+                        s.merchant_id,
+                        session_id,
+                        s.amount_cents,
                     )
                     .await,
                 ),
                 // Compensating reversal on a real return/reversal.
                 Returned | Reversed => Some(
                     paybank_db::ledger_repo::LedgerRepo::record_reversal(
-                        pool, s.merchant_id, session_id, s.amount_cents,
+                        pool,
+                        s.merchant_id,
+                        session_id,
+                        s.amount_cents,
                     )
                     .await,
                 ),

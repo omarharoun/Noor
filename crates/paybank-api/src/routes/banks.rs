@@ -7,7 +7,7 @@ pub async fn list_banks(
 ) -> Result<Json<serde_json::Value>, paybank_core::AppError> {
     let banks = bank_repo::list_banks(&state.db.pool)
         .await
-        .map_err(|e| paybank_core::AppError::Internal(e))?;
+        .map_err(paybank_core::AppError::Internal)?;
 
     let response = banks
         .iter()

@@ -1,6 +1,6 @@
 use anyhow::Result;
-use qrcode::QrCode;
 use qrcode::render::svg;
+use qrcode::QrCode;
 
 pub fn generate_qr_svg(data: &str) -> Result<String> {
     let code = QrCode::new(data.as_bytes())?;

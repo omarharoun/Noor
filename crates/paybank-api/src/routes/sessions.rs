@@ -4,11 +4,13 @@ use axum::{
     extract::{Path, Query, State},
     Extension, Json,
 };
-use paybank_core::{AppError, CreateSessionRequest, CreateSessionResponse, PaymentRail, SessionStatus};
+use chrono::{Duration, Utc};
+use paybank_core::{
+    AppError, CreateSessionRequest, CreateSessionResponse, PaymentRail, SessionStatus,
+};
 use paybank_db::{audit_repo, bank_repo, session_repo};
 use serde::Deserialize;
 use uuid::Uuid;
-use chrono::{Duration, Utc};
 
 pub async fn create_session(
     State(state): State<AppState>,
@@ -34,11 +36,7 @@ pub async fn create_session(
         .await?
         .ok_or(AppError::BankNotFound)?;
 
-    let rail = PaymentRail::choose(
-        bank.supports_fednow,
-        bank.supports_rtp,
-        req.amount_cents,
-    );
+    let rail = PaymentRail::choose(bank.supports_fednow, bank.supports_rtp, req.amount_cents);
 
     let expires_at = Utc::now() + Duration::hours(24);
     let id = Uuid::new_v4();
@@ -89,7 +87,8 @@ pub async fn list_sessions(
 ) -> Result<Json<serde_json::Value>, AppError> {
     let limit = q.limit.unwrap_or(50).min(200);
     let offset = q.offset.unwrap_or(0);
-    let (sessions, total) = session_repo::list_sessions(&state.db.pool, q.merchant_id, limit, offset).await?;
+    let (sessions, total) =
+        session_repo::list_sessions(&state.db.pool, q.merchant_id, limit, offset).await?;
     Ok(Json(serde_json::json!({
         "sessions": sessions,
         "total": total,
@@ -176,10 +175,10 @@ pub async fn get_session_qr(
         .await?
         .ok_or(AppError::SessionNotFound)?;
 
-    let public_url = std::env::var("PUBLIC_APP_URL").unwrap_or_else(|_| "http://localhost:3000".into());
+    let public_url =
+        std::env::var("PUBLIC_APP_URL").unwrap_or_else(|_| "http://localhost:3000".into());
     let pay_url = format!("{}/pay/{}", public_url, id);
-    let qr = paybank_qr::generate_qr_svg(&pay_url)
-        .map_err(|e| AppError::Internal(e))?;
+    let qr = paybank_qr::generate_qr_svg(&pay_url).map_err(AppError::Internal)?;
 
     Ok(qr)
 }
@@ -243,7 +242,10 @@ pub async fn initiate_payment(
         return Err(AppError::SessionExpired);
     }
 
-    let rail = session.rail_used.as_ref().ok_or(AppError::SessionNotFound)?;
+    let rail = session
+        .rail_used
+        .as_ref()
+        .ok_or(AppError::SessionNotFound)?;
     let raw = session
         .column_counterparty_id
         .ok_or_else(|| AppError::Internal(anyhow::anyhow!("No counterparty linked")))?;
@@ -257,9 +259,14 @@ pub async fn initiate_payment(
     // P0: atomic compare-and-swap guard. Only an `authorized` session can be
     // moved to `processing`, and only one caller wins — this is what stops two
     // concurrent/duplicate initiate calls from both firing a transfer.
-    let claimed =
-        session_repo::try_transition(&state.db.pool, id, &[SessionStatus::Authorized], &SessionStatus::Processing, None)
-            .await?;
+    let claimed = session_repo::try_transition(
+        &state.db.pool,
+        id,
+        &[SessionStatus::Authorized],
+        &SessionStatus::Processing,
+        None,
+    )
+    .await?;
     if !claimed {
         return Err(AppError::InvalidStateTransition);
     }
@@ -369,10 +376,7 @@ pub async fn initiate_payment(
 }
 
 fn generate_qr_data(pay_url: &str) -> String {
-    let prefix = "https://pay.noor.com/p/";
-    if pay_url.starts_with(prefix) {
-        pay_url.to_string()
-    } else {
-        pay_url.to_string()
-    }
+    // The QR encodes the hosted checkout URL verbatim (built from
+    // `public_app_url` by the caller).
+    pay_url.to_string()
 }

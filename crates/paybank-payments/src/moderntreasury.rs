@@ -14,7 +14,7 @@ fn mt_client() -> Result<Client, AppError> {
     let api_key = std::env::var("MODERN_TREASURY_API_KEY")
         .map_err(|_| AppError::ModernTreasuryError("MODERN_TREASURY_API_KEY not set".into()))?;
 
-    Ok(Client::builder()
+    Client::builder()
         .timeout(std::time::Duration::from_secs(15))
         .default_headers({
             let mut h = reqwest::header::HeaderMap::new();
@@ -32,7 +32,7 @@ fn mt_client() -> Result<Client, AppError> {
             h
         })
         .build()
-        .map_err(|e| AppError::ModernTreasuryError(e.to_string()))?)
+        .map_err(|e| AppError::ModernTreasuryError(e.to_string()))
 }
 
 #[derive(Debug, Serialize)]
@@ -115,7 +115,7 @@ pub async fn create_counterparty(
     };
 
     let resp = client
-        .post(&format!("{}/counterparties", MT_BASE_URL))
+        .post(format!("{}/counterparties", MT_BASE_URL))
         .json(&request)
         .send()
         .await
@@ -124,19 +124,23 @@ pub async fn create_counterparty(
     if !resp.status().is_success() {
         let status = resp.status();
         let body = resp.text().await.unwrap_or_default();
-        warn!("MT counterparty creation failed: HTTP {} - {}", status, body);
+        warn!(
+            "MT counterparty creation failed: HTTP {} - {}",
+            status, body
+        );
         return Err(AppError::ModernTreasuryError(format!(
             "Counterparty creation failed: HTTP {} - {}",
             status, body
         )));
     }
 
-    let counterparty: CounterpartyResponse = resp
-        .json()
-        .await
-        .map_err(|e| AppError::ModernTreasuryError(format!("Failed to parse counterparty: {}", e)))?;
+    let counterparty: CounterpartyResponse = resp.json().await.map_err(|e| {
+        AppError::ModernTreasuryError(format!("Failed to parse counterparty: {}", e))
+    })?;
 
-    let external_account_id = counterparty.accounts.first()
+    let external_account_id = counterparty
+        .accounts
+        .first()
         .map(|a| a.id.clone())
         .unwrap_or_else(|| counterparty.id.clone());
 
@@ -178,7 +182,7 @@ pub async fn create_transfer(
     // Idempotency-Key makes a retried POST reuse the same payment order instead
     // of creating a duplicate transfer (MT honors this header).
     let resp = client
-        .post(&format!("{}/payment_orders", MT_BASE_URL))
+        .post(format!("{}/payment_orders", MT_BASE_URL))
         .header("Idempotency-Key", idempotency_key)
         .json(&request)
         .send()
@@ -200,10 +204,9 @@ pub async fn create_transfer(
         });
     }
 
-    let order: PaymentOrderResponse = resp
-        .json()
-        .await
-        .map_err(|e| AppError::ModernTreasuryError(format!("Failed to parse payment order: {}", e)))?;
+    let order: PaymentOrderResponse = resp.json().await.map_err(|e| {
+        AppError::ModernTreasuryError(format!("Failed to parse payment order: {}", e))
+    })?;
 
     info!("Created MT payment order {}", order.id);
     Ok(order)
@@ -213,17 +216,14 @@ pub async fn get_transfer_status(transfer_id: &str) -> Result<String, AppError> 
     let client = mt_client()?;
 
     let resp = client
-        .get(&format!("{}/payment_orders/{}", MT_BASE_URL, transfer_id))
+        .get(format!("{}/payment_orders/{}", MT_BASE_URL, transfer_id))
         .send()
         .await
         .map_err(|e| AppError::ModernTreasuryError(e.to_string()))?;
 
-    let order: PaymentOrderResponse = resp
-        .json()
-        .await
-        .map_err(|e| {
-            AppError::ModernTreasuryError(format!("Failed to parse payment order status: {}", e))
-        })?;
+    let order: PaymentOrderResponse = resp.json().await.map_err(|e| {
+        AppError::ModernTreasuryError(format!("Failed to parse payment order status: {}", e))
+    })?;
 
     Ok(order.status)
 }
@@ -231,7 +231,7 @@ pub async fn get_transfer_status(transfer_id: &str) -> Result<String, AppError> 
 pub async fn get_payment_order_details(transfer_id: &str) -> Result<serde_json::Value, AppError> {
     let client = mt_client()?;
     let resp = client
-        .get(&format!("{}/payment_orders/{}", MT_BASE_URL, transfer_id))
+        .get(format!("{}/payment_orders/{}", MT_BASE_URL, transfer_id))
         .send()
         .await
         .map_err(|e| AppError::ModernTreasuryError(e.to_string()))?;
@@ -239,7 +239,8 @@ pub async fn get_payment_order_details(transfer_id: &str) -> Result<serde_json::
         let status = resp.status();
         let body = resp.text().await.unwrap_or_default();
         return Err(AppError::ModernTreasuryError(format!(
-            "Failed to fetch payment order: HTTP {} - {}", status, body
+            "Failed to fetch payment order: HTTP {} - {}",
+            status, body
         )));
     }
     let val: serde_json::Value = resp
@@ -249,10 +250,15 @@ pub async fn get_payment_order_details(transfer_id: &str) -> Result<serde_json::
     Ok(val)
 }
 
-pub async fn get_counterparty_details(counterparty_id: &str) -> Result<serde_json::Value, AppError> {
+pub async fn get_counterparty_details(
+    counterparty_id: &str,
+) -> Result<serde_json::Value, AppError> {
     let client = mt_client()?;
     let resp = client
-        .get(&format!("{}/counterparties/{}", MT_BASE_URL, counterparty_id))
+        .get(format!(
+            "{}/counterparties/{}",
+            MT_BASE_URL, counterparty_id
+        ))
         .send()
         .await
         .map_err(|e| AppError::ModernTreasuryError(e.to_string()))?;
@@ -260,7 +266,8 @@ pub async fn get_counterparty_details(counterparty_id: &str) -> Result<serde_jso
         let status = resp.status();
         let body = resp.text().await.unwrap_or_default();
         return Err(AppError::ModernTreasuryError(format!(
-            "Failed to fetch counterparty: HTTP {} - {}", status, body
+            "Failed to fetch counterparty: HTTP {} - {}",
+            status, body
         )));
     }
     let val: serde_json::Value = resp

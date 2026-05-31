@@ -51,7 +51,8 @@ pub async fn begin(
     let mut tx = db.pool.begin().await?;
     let expires_at = Utc::now() + Duration::hours(24);
     let acquired =
-        IdempotencyRepo::try_acquire_key(&mut tx, merchant_id, key, request_hash, expires_at).await?;
+        IdempotencyRepo::try_acquire_key(&mut tx, merchant_id, key, request_hash, expires_at)
+            .await?;
     tx.commit().await?;
 
     match acquired {
@@ -62,7 +63,9 @@ pub async fn begin(
             }
             match existing.state.as_str() {
                 "completed" => Ok(Outcome::Replay(
-                    existing.response_body.unwrap_or_else(|| serde_json::json!({})),
+                    existing
+                        .response_body
+                        .unwrap_or_else(|| serde_json::json!({})),
                 )),
                 _ => Err(AppError::IdempotencyConflict),
             }

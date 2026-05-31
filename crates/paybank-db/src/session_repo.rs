@@ -4,6 +4,7 @@ use paybank_core::{PaymentRail, PaymentSession, SessionStatus};
 use sqlx::PgPool;
 use uuid::Uuid;
 
+#[allow(clippy::too_many_arguments)] // one parameter per persisted column
 pub async fn create_session(
     pool: &PgPool,
     id: Uuid,
@@ -34,7 +35,8 @@ pub async fn create_session(
 }
 
 pub async fn get_session(pool: &PgPool, id: Uuid) -> Result<Option<PaymentSession>> {
-    let mut session = sqlx::query_as!(PaymentSession,
+    let mut session = sqlx::query_as!(
+        PaymentSession,
         r#"SELECT
             id, merchant_id, bank_id, amount_cents, currency, note,
             status as "status: SessionStatus",
@@ -115,11 +117,7 @@ pub async fn try_transition(
     Ok(rows == 1)
 }
 
-pub async fn update_counterparty_id(
-    pool: &PgPool,
-    id: Uuid,
-    counterparty_id: &str,
-) -> Result<()> {
+pub async fn update_counterparty_id(pool: &PgPool, id: Uuid, counterparty_id: &str) -> Result<()> {
     sqlx::query!(
         r#"UPDATE payment_sessions
            SET column_counterparty_id = $2, updated_at = NOW()
@@ -174,7 +172,8 @@ pub async fn list_sessions(
     limit: i64,
     offset: i64,
 ) -> Result<(Vec<PaymentSession>, i64)> {
-    let sessions = sqlx::query_as!(PaymentSession,
+    let sessions = sqlx::query_as!(
+        PaymentSession,
         r#"SELECT
             id, merchant_id, bank_id, amount_cents, currency, note,
             status as "status: SessionStatus",
@@ -187,7 +186,9 @@ pub async fn list_sessions(
             expires_at, created_at, updated_at
         FROM payment_sessions WHERE merchant_id = $1
         ORDER BY created_at DESC LIMIT $2 OFFSET $3"#,
-        merchant_id, limit, offset
+        merchant_id,
+        limit,
+        offset
     )
     .fetch_all(pool)
     .await?;
@@ -203,6 +204,7 @@ pub async fn list_sessions(
     Ok((sessions, total))
 }
 
+#[allow(clippy::too_many_arguments)] // one parameter per persisted column
 pub async fn update_customer_details(
     pool: &PgPool,
     id: Uuid,
@@ -236,7 +238,18 @@ pub async fn update_customer_details(
             customer_account_type = $12,
             updated_at = NOW()
         WHERE id = $1"#,
-        id, name, email, phone, address_line_1, city, state, postal_code, country_code, enc_account, enc_routing, account_type
+        id,
+        name,
+        email,
+        phone,
+        address_line_1,
+        city,
+        state,
+        postal_code,
+        country_code,
+        enc_account,
+        enc_routing,
+        account_type
     )
     .execute(pool)
     .await?;

@@ -75,7 +75,8 @@ async fn admin_handler(req: Request) -> Response {
         Err(_) => {
             if !file_path.contains('.') || file_path.ends_with(".html") {
                 if let Ok(index) = tokio::fs::read_to_string("admin/dist/index.html").await {
-                    return ([(axum::http::header::CONTENT_TYPE, "text/html")], index).into_response();
+                    return ([(axum::http::header::CONTENT_TYPE, "text/html")], index)
+                        .into_response();
                 }
             }
             StatusCode::NOT_FOUND.into_response()
@@ -89,7 +90,10 @@ pub fn build_router(state: AppState) -> Router {
     let admin = Router::new()
         .route("/api/admin/stats", get(routes::admin::get_stats))
         .route("/api/admin/sessions", get(routes::admin::list_sessions))
-        .route("/api/admin/sessions/:id", get(routes::admin::get_session_detail))
+        .route(
+            "/api/admin/sessions/:id",
+            get(routes::admin::get_session_detail),
+        )
         .route(
             "/api/admin/merchants",
             get(routes::admin::list_merchants).post(routes::admin::create_merchant),
@@ -99,7 +103,10 @@ pub fn build_router(state: AppState) -> Router {
             get(routes::admin::get_merchant).put(routes::admin::update_merchant),
         )
         .route("/api/admin/banks", get(routes::admin::list_banks))
-        .route("/api/admin/settlements", get(routes::admin::list_settlements))
+        .route(
+            "/api/admin/settlements",
+            get(routes::admin::list_settlements),
+        )
         .route("/api/admin/webhooks", get(routes::admin::list_webhooks))
         .route(
             "/api/admin/webhooks/:id/retry",
@@ -115,7 +122,10 @@ pub fn build_router(state: AppState) -> Router {
             "/api/admin/operators/:id",
             axum::routing::patch(routes::admin::update_operator),
         )
-        .route_layer(middleware::from_fn_with_state(state.clone(), auth::admin_auth));
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            auth::admin_auth,
+        ));
 
     // Operator surface: session creation/listing, money initiation and the
     // transactions ledger. P0: these were PUBLIC — anyone could move money for
@@ -126,10 +136,22 @@ pub fn build_router(state: AppState) -> Router {
             "/api/sessions",
             get(routes::sessions::list_sessions).post(routes::sessions::create_session),
         )
-        .route("/api/sessions/initiate", post(routes::initiate::initiate_session))
-        .route("/api/sessions/:id/initiate", post(routes::sessions::initiate_payment))
-        .route("/api/transactions", get(routes::transactions::list_transactions))
-        .route_layer(middleware::from_fn_with_state(state.clone(), auth::admin_auth));
+        .route(
+            "/api/sessions/initiate",
+            post(routes::initiate::initiate_session),
+        )
+        .route(
+            "/api/sessions/:id/initiate",
+            post(routes::sessions::initiate_payment),
+        )
+        .route(
+            "/api/transactions",
+            get(routes::transactions::list_transactions),
+        )
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            auth::admin_auth,
+        ));
 
     // Merchant API — gated behind a valid merchant API key (injects merchant id).
     let merchant = Router::new()
@@ -141,7 +163,10 @@ pub fn build_router(state: AppState) -> Router {
             "/api/merchant-api/merchants/profile",
             get(routes::merchant_api::get_merchant_profile),
         )
-        .route("/api/merchant-api/payments", get(routes::merchant_api::list_payments))
+        .route(
+            "/api/merchant-api/payments",
+            get(routes::merchant_api::list_payments),
+        )
         .route(
             "/api/merchant-api/payments/timeseries",
             get(routes::merchant_api::payment_timeseries),
@@ -150,7 +175,10 @@ pub fn build_router(state: AppState) -> Router {
             "/api/merchant-api/payment_links",
             post(routes::merchant_api::create_payment_link),
         )
-        .route_layer(middleware::from_fn_with_state(state.clone(), auth::merchant_auth));
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            auth::merchant_auth,
+        ));
 
     // Public surfaces: health, auth bootstrap, webhooks (signature-verified),
     // and the customer-facing pay/session flow reached via unguessable UUIDs.
@@ -163,20 +191,44 @@ pub fn build_router(state: AppState) -> Router {
         // Customer-facing, capability-scoped by the unguessable session UUID.
         // `get_session` returns a REDACTED view (no raw bank account/routing).
         .route("/api/sessions/:id", get(routes::sessions::get_session))
-        .route("/api/sessions/:id/qr", get(routes::sessions::get_session_qr))
-        .route("/api/sessions/:id/stream", get(routes::sessions::stream_session))
-        .route("/api/sessions/:id/confirm", post(routes::confirm::confirm_payment))
-        .route("/api/webhooks/column", post(routes::webhooks::column_webhook))
+        .route(
+            "/api/sessions/:id/qr",
+            get(routes::sessions::get_session_qr),
+        )
+        .route(
+            "/api/sessions/:id/stream",
+            get(routes::sessions::stream_session),
+        )
+        .route(
+            "/api/sessions/:id/confirm",
+            post(routes::confirm::confirm_payment),
+        )
+        .route(
+            "/api/webhooks/column",
+            post(routes::webhooks::column_webhook),
+        )
         .route(
             "/api/webhooks/moderntreasury",
             post(routes::webhooks::moderntreasury_webhook),
         )
-        .route("/api/plaid/link-token", get(routes::plaid::create_link_token))
-        .route("/api/plaid/exchange", post(routes::plaid::exchange_public_token))
+        .route(
+            "/api/plaid/link-token",
+            get(routes::plaid::create_link_token),
+        )
+        .route(
+            "/api/plaid/exchange",
+            post(routes::plaid::exchange_public_token),
+        )
         .route("/pay/:id", get(pay_page))
         .route("/invoice/:id", get(invoice_page))
-        .route("/api/mt/payment-orders/:id", get(routes::mt::get_payment_order))
-        .route("/api/mt/counterparties/:id", get(routes::mt::get_counterparty))
+        .route(
+            "/api/mt/payment-orders/:id",
+            get(routes::mt::get_payment_order),
+        )
+        .route(
+            "/api/mt/counterparties/:id",
+            get(routes::mt::get_counterparty),
+        )
         .route("/admin", get(admin_handler))
         .route("/admin/", get(admin_handler))
         .route("/admin/*path", get(admin_handler))

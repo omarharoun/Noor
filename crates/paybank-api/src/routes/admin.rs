@@ -65,12 +65,10 @@ pub struct UpdateMerchantBody {
     webhook_url: Option<String>,
 }
 
-pub async fn get_stats(
-    State(state): State<AppState>,
-) -> Result<Json<serde_json::Value>, AppError> {
+pub async fn get_stats(State(state): State<AppState>) -> Result<Json<serde_json::Value>, AppError> {
     let stats = admin_repo::get_dashboard_stats(&state.db.pool)
         .await
-        .map_err(|e| AppError::Internal(e))?;
+        .map_err(AppError::Internal)?;
     Ok(Json(serde_json::to_value(stats).unwrap()))
 }
 
@@ -90,8 +88,10 @@ pub async fn list_sessions(
         q.date_to,
     )
     .await
-    .map_err(|e| AppError::Internal(e))?;
-    Ok(Json(serde_json::json!({ "sessions": sessions, "total": total })))
+    .map_err(AppError::Internal)?;
+    Ok(Json(
+        serde_json::json!({ "sessions": sessions, "total": total }),
+    ))
 }
 
 pub async fn get_session_detail(
@@ -100,7 +100,7 @@ pub async fn get_session_detail(
 ) -> Result<Json<serde_json::Value>, AppError> {
     let session = paybank_db::session_repo::get_session(&state.db.pool, id)
         .await
-        .map_err(|e| AppError::Internal(e.into()))?;
+        .map_err(AppError::Internal)?;
     Ok(Json(serde_json::to_value(session).unwrap()))
 }
 
@@ -112,9 +112,11 @@ pub async fn list_merchants(
     let offset = q.offset.unwrap_or(0);
     let (merchants, total) = admin_repo::list_merchants(&state.db.pool, limit, offset)
         .await
-        .map_err(|e| AppError::Internal(e))?;
+        .map_err(AppError::Internal)?;
     let merchants: Vec<_> = merchants.iter().map(redact_merchant).collect();
-    Ok(Json(serde_json::json!({ "merchants": merchants, "total": total })))
+    Ok(Json(
+        serde_json::json!({ "merchants": merchants, "total": total }),
+    ))
 }
 
 pub async fn get_merchant(
@@ -123,8 +125,13 @@ pub async fn get_merchant(
 ) -> Result<Json<serde_json::Value>, AppError> {
     let merchant = admin_repo::get_merchant(&state.db.pool, id)
         .await
-        .map_err(|e| AppError::Internal(e))?;
-    Ok(Json(merchant.as_ref().map(redact_merchant).unwrap_or(serde_json::Value::Null)))
+        .map_err(AppError::Internal)?;
+    Ok(Json(
+        merchant
+            .as_ref()
+            .map(redact_merchant)
+            .unwrap_or(serde_json::Value::Null),
+    ))
 }
 
 pub async fn create_merchant(
@@ -135,7 +142,7 @@ pub async fn create_merchant(
     let api_key = format!("admin_{}", Uuid::new_v4());
     let merchant = admin_repo::create_merchant(&state.db.pool, &body.name, &body.email, &api_key)
         .await
-        .map_err(|e| AppError::Internal(e))?;
+        .map_err(AppError::Internal)?;
     audit_repo::record(
         &state.db.pool,
         &claims.sub,
@@ -165,7 +172,7 @@ pub async fn update_merchant(
         body.webhook_url.as_deref(),
     )
     .await
-    .map_err(|e| AppError::Internal(e))?;
+    .map_err(AppError::Internal)?;
     Ok(Json(redact_merchant(&merchant)))
 }
 
@@ -174,7 +181,7 @@ pub async fn list_banks(
 ) -> Result<Json<serde_json::Value>, AppError> {
     let banks = paybank_db::bank_repo::list_banks(&state.db.pool)
         .await
-        .map_err(|e| AppError::Internal(e.into()))?;
+        .map_err(AppError::Internal)?;
     Ok(Json(serde_json::json!({ "banks": banks })))
 }
 
@@ -183,7 +190,7 @@ pub async fn list_settlements(
 ) -> Result<Json<serde_json::Value>, AppError> {
     let settlements = admin_repo::get_settlements(&state.db.pool)
         .await
-        .map_err(|e| AppError::Internal(e))?;
+        .map_err(AppError::Internal)?;
     Ok(Json(serde_json::json!({ "settlements": settlements })))
 }
 
@@ -195,8 +202,10 @@ pub async fn list_webhooks(
     let offset = q.offset.unwrap_or(0);
     let (events, total) = admin_repo::list_webhook_events(&state.db.pool, limit, offset)
         .await
-        .map_err(|e| AppError::Internal(e))?;
-    Ok(Json(serde_json::json!({ "events": events, "total": total })))
+        .map_err(AppError::Internal)?;
+    Ok(Json(
+        serde_json::json!({ "events": events, "total": total }),
+    ))
 }
 
 /// Recent audit-log entries (who did what).
@@ -295,10 +304,14 @@ pub async fn update_operator(
         .ok_or(AppError::Unauthorized)?;
     if target.email == claims.sub {
         if body.is_active == Some(false) {
-            return Err(AppError::ComplianceRejected("cannot deactivate your own account".into()));
+            return Err(AppError::ComplianceRejected(
+                "cannot deactivate your own account".into(),
+            ));
         }
         if body.role.as_deref() == Some("operator") {
-            return Err(AppError::ComplianceRejected("cannot demote your own owner account".into()));
+            return Err(AppError::ComplianceRejected(
+                "cannot demote your own owner account".into(),
+            ));
         }
     }
     let updated = operator_repo::update(&state.db.pool, id, body.is_active, body.role.as_deref())

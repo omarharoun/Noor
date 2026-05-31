@@ -59,7 +59,14 @@ async fn deliver(state: &AppState, client: &reqwest::Client, ev: DueWebhook) {
         Ok(e) => e,
         Err(e) => {
             tracing::error!(event_id = %ev.id, error = %e, "lookup merchant endpoint failed");
-            let _ = webhook_repo::mark_failed(pool, ev.id, ev.attempts, MAX_ATTEMPTS, backoff_secs(ev.attempts)).await;
+            let _ = webhook_repo::mark_failed(
+                pool,
+                ev.id,
+                ev.attempts,
+                MAX_ATTEMPTS,
+                backoff_secs(ev.attempts),
+            )
+            .await;
             return;
         }
     };
@@ -104,12 +111,27 @@ async fn deliver(state: &AppState, client: &reqwest::Client, ev: DueWebhook) {
             if r.status().is_success() {
                 let _ = webhook_repo::mark_delivered(pool, ev.id).await;
             } else {
-                let _ = webhook_repo::mark_failed(pool, ev.id, ev.attempts, MAX_ATTEMPTS, backoff_secs(ev.attempts)).await;
+                let _ = webhook_repo::mark_failed(
+                    pool,
+                    ev.id,
+                    ev.attempts,
+                    MAX_ATTEMPTS,
+                    backoff_secs(ev.attempts),
+                )
+                .await;
             }
         }
         Err(e) => {
-            let _ = webhook_repo::log_attempt(pool, ev.id, ev.attempts, None, Some(&e.to_string())).await;
-            let _ = webhook_repo::mark_failed(pool, ev.id, ev.attempts, MAX_ATTEMPTS, backoff_secs(ev.attempts)).await;
+            let _ = webhook_repo::log_attempt(pool, ev.id, ev.attempts, None, Some(&e.to_string()))
+                .await;
+            let _ = webhook_repo::mark_failed(
+                pool,
+                ev.id,
+                ev.attempts,
+                MAX_ATTEMPTS,
+                backoff_secs(ev.attempts),
+            )
+            .await;
         }
     }
 }

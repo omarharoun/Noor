@@ -75,8 +75,9 @@ pub async fn initiate_transfer(
     let provider = PaymentProvider::primary();
     match provider {
         PaymentProvider::ModernTreasury => {
-            let internal_account_id = std::env::var("MT_INTERNAL_ACCOUNT_ID")
-                .map_err(|_| AppError::ModernTreasuryError("MT_INTERNAL_ACCOUNT_ID not set".into()))?;
+            let internal_account_id = std::env::var("MT_INTERNAL_ACCOUNT_ID").map_err(|_| {
+                AppError::ModernTreasuryError("MT_INTERNAL_ACCOUNT_ID not set".into())
+            })?;
             let result = moderntreasury::create_transfer(
                 &internal_account_id,
                 counterparty_id,
@@ -117,13 +118,13 @@ pub struct TransferResult {
     pub provider_transfer_id: String,
 }
 
-pub async fn check_transfer_status(
-    provider: &str,
-    transfer_id: &str,
-) -> Result<String, AppError> {
+pub async fn check_transfer_status(provider: &str, transfer_id: &str) -> Result<String, AppError> {
     match provider {
         "modern_treasury" => moderntreasury::get_transfer_status(transfer_id).await,
         "column" => column::get_transfer_status(transfer_id).await,
-        _ => Err(AppError::Internal(anyhow::anyhow!("unknown provider: {}", provider))),
+        _ => Err(AppError::Internal(anyhow::anyhow!(
+            "unknown provider: {}",
+            provider
+        ))),
     }
 }

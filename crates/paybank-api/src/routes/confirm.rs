@@ -111,7 +111,8 @@ pub async fn confirm_payment(
             current_balance: None,
             iso_currency_code: None,
         };
-        let result = match paybank_payments::create_counterparty(&details, &req.customer_name).await {
+        let result = match paybank_payments::create_counterparty(&details, &req.customer_name).await
+        {
             Ok(r) => r,
             Err(e) => {
                 // We already claimed Authorized; mark Failed so the session is a
@@ -128,8 +129,7 @@ pub async fn confirm_payment(
             }
         };
         let stored = format!("{}|{}", result.counterparty_id, result.external_account_id);
-        session_repo::update_counterparty_id(&state.db.pool, req.session_id, &stored)
-            .await?;
+        session_repo::update_counterparty_id(&state.db.pool, req.session_id, &stored).await?;
         Some(stored)
     } else {
         None

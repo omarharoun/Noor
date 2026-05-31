@@ -29,7 +29,9 @@ impl Config {
         // startup (role `owner`); otherwise the DB `operators` table is the only
         // source of logins.
         let admin_email = std::env::var("ADMIN_EMAIL").ok().filter(|s| !s.is_empty());
-        let admin_password = std::env::var("ADMIN_PASSWORD").ok().filter(|s| !s.is_empty());
+        let admin_password = std::env::var("ADMIN_PASSWORD")
+            .ok()
+            .filter(|s| !s.is_empty());
         Ok(Self {
             public_app_url,
             jwt_secret,

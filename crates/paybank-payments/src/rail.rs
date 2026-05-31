@@ -19,13 +19,22 @@ mod tests {
     fn above_threshold_chooses_wire_even_with_realtime_support() {
         // 2_500_001 cents is strictly greater than the $25,000 (2_500_000) cap.
         assert_eq!(choose_rail(true, true, true, 2_500_001), PaymentRail::Wire);
-        assert_eq!(choose_rail(false, false, false, 2_500_001), PaymentRail::Wire);
-        assert_eq!(choose_rail(false, true, true, 100_000_000), PaymentRail::Wire);
+        assert_eq!(
+            choose_rail(false, false, false, 2_500_001),
+            PaymentRail::Wire
+        );
+        assert_eq!(
+            choose_rail(false, true, true, 100_000_000),
+            PaymentRail::Wire
+        );
     }
 
     #[test]
     fn fednow_preferred_when_supported_below_threshold() {
-        assert_eq!(choose_rail(true, true, true, 1_000_000), PaymentRail::FedNow);
+        assert_eq!(
+            choose_rail(true, true, true, 1_000_000),
+            PaymentRail::FedNow
+        );
         assert_eq!(choose_rail(true, false, false, 1), PaymentRail::FedNow);
     }
 
@@ -43,7 +52,10 @@ mod tests {
     #[test]
     fn boundary_at_exactly_threshold_is_not_wire() {
         // Exactly 2_500_000 is NOT > 2_500_000, so it routes by support flags.
-        assert_eq!(choose_rail(true, true, true, 2_500_000), PaymentRail::FedNow);
+        assert_eq!(
+            choose_rail(true, true, true, 2_500_000),
+            PaymentRail::FedNow
+        );
         assert_eq!(choose_rail(false, true, true, 2_500_000), PaymentRail::Rtp);
         assert_eq!(choose_rail(false, false, true, 2_500_000), PaymentRail::Ach);
     }

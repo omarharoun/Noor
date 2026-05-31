@@ -58,7 +58,11 @@ pub fn hash_password(plaintext: &str) -> Result<String, AppError> {
 
 fn verify_password(plaintext: &str, hash: &str) -> bool {
     PasswordHash::new(hash)
-        .map(|parsed| Argon2::default().verify_password(plaintext.as_bytes(), &parsed).is_ok())
+        .map(|parsed| {
+            Argon2::default()
+                .verify_password(plaintext.as_bytes(), &parsed)
+                .is_ok()
+        })
         .unwrap_or(false)
 }
 
@@ -69,7 +73,12 @@ fn dummy_hash() -> &'static str {
     H.get_or_init(|| hash_password("noor-timing-dummy").unwrap_or_default())
 }
 
-fn issue_token(config: &crate::state::Config, claims_sub: &str, name: &str, role: &str) -> Result<String, AppError> {
+fn issue_token(
+    config: &crate::state::Config,
+    claims_sub: &str,
+    name: &str,
+    role: &str,
+) -> Result<String, AppError> {
     let exp = (chrono::Utc::now().timestamp() + TOKEN_TTL_SECS) as usize;
     let claims = Claims {
         sub: claims_sub.to_string(),
@@ -95,7 +104,7 @@ fn decode_token(config: &crate::state::Config, token: &str) -> Result<Claims, Ap
     .map_err(|_| AppError::Unauthorized)
 }
 
-fn bearer<'a>(req: &'a Request) -> Option<&'a str> {
+fn bearer(req: &Request) -> Option<&str> {
     req.headers()
         .get(header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
@@ -209,10 +218,7 @@ pub async fn ensure_bootstrap_operator(pool: &PgPool, config: &Config) -> anyhow
     Ok(())
 }
 
-pub async fn me(
-    State(state): State<AppState>,
-    req: Request,
-) -> Result<Json<Operator>, AppError> {
+pub async fn me(State(state): State<AppState>, req: Request) -> Result<Json<Operator>, AppError> {
     let token = bearer(&req).ok_or(AppError::Unauthorized)?;
     let claims = decode_token(&state.config, token)?;
     Ok(Json(Operator {

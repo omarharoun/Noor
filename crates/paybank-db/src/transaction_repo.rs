@@ -4,6 +4,7 @@ use paybank_core::{PaymentRail, Transaction};
 use sqlx::PgPool;
 use uuid::Uuid;
 
+#[allow(clippy::too_many_arguments)] // one parameter per persisted column
 pub async fn create_transaction(
     pool: &PgPool,
     id: Uuid,

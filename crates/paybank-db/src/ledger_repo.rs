@@ -65,7 +65,10 @@ impl LedgerRepo {
         Ok(posting)
     }
 
-    pub async fn verify_balance<'c, E>(executor: E, journal_entry_id: Uuid) -> Result<bool, sqlx::Error>
+    pub async fn verify_balance<'c, E>(
+        executor: E,
+        journal_entry_id: Uuid,
+    ) -> Result<bool, sqlx::Error>
     where
         E: sqlx::Executor<'c, Database = sqlx::Postgres>,
     {
@@ -96,7 +99,11 @@ impl LedgerRepo {
         Ok(debits == credits && debits > 0)
     }
 
-    pub async fn get_account<'c, E>(executor: E, name: &str, merchant_id: Uuid) -> Result<LedgerAccount, sqlx::Error>
+    pub async fn get_account<'c, E>(
+        executor: E,
+        name: &str,
+        merchant_id: Uuid,
+    ) -> Result<LedgerAccount, sqlx::Error>
     where
         E: sqlx::Executor<'c, Database = sqlx::Postgres> + Copy,
     {
@@ -113,7 +120,10 @@ impl LedgerRepo {
 
     /// Idempotently ensure a merchant has its standard chart of accounts. Safe to
     /// call repeatedly (e.g. on merchant creation and lazily before posting).
-    pub async fn ensure_merchant_accounts(pool: &PgPool, merchant_id: Uuid) -> Result<(), sqlx::Error> {
+    pub async fn ensure_merchant_accounts(
+        pool: &PgPool,
+        merchant_id: Uuid,
+    ) -> Result<(), sqlx::Error> {
         for (name, ty) in MERCHANT_ACCOUNTS {
             sqlx::query(
                 r#"INSERT INTO ledger_accounts (name, type, merchant_id, currency)
@@ -204,7 +214,10 @@ impl LedgerRepo {
 
     /// A merchant's available balance = net credit on their liability
     /// (Settlement) account — what Noor owes them and can pay out.
-    pub async fn merchant_available_cents(pool: &PgPool, merchant_id: Uuid) -> Result<i64, sqlx::Error> {
+    pub async fn merchant_available_cents(
+        pool: &PgPool,
+        merchant_id: Uuid,
+    ) -> Result<i64, sqlx::Error> {
         let bal: i64 = sqlx::query_scalar(
             r#"SELECT COALESCE(SUM(
                    CASE WHEN lp.direction = 'credit' THEN lp.amount_cents ELSE -lp.amount_cents END

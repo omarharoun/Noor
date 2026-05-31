@@ -74,20 +74,45 @@ async fn tick(state: &AppState) -> Result<(), sqlx::Error> {
                 };
                 let pool = &state.db.pool;
                 match resolved {
-                    SessionStatus::Completed => {
-                        if session_repo::try_transition(pool, id, &[SessionStatus::Processing], &SessionStatus::Completed, Some(&tref)).await.unwrap_or(false) {
-                            let _ = LedgerRepo::record_settlement(pool, merchant_id, id, amount_cents).await;
-                            tracing::info!(session_id = %id, "reconciled -> completed");
-                        }
+                    SessionStatus::Completed
+                        if session_repo::try_transition(
+                            pool,
+                            id,
+                            &[SessionStatus::Processing],
+                            &SessionStatus::Completed,
+                            Some(&tref),
+                        )
+                        .await
+                        .unwrap_or(false) =>
+                    {
+                        let _ = LedgerRepo::record_settlement(pool, merchant_id, id, amount_cents)
+                            .await;
+                        tracing::info!(session_id = %id, "reconciled -> completed");
                     }
-                    SessionStatus::Returned | SessionStatus::Reversed => {
-                        if session_repo::try_transition(pool, id, &[SessionStatus::Processing], &resolved, Some(&tref)).await.unwrap_or(false) {
-                            let _ = LedgerRepo::record_reversal(pool, merchant_id, id, amount_cents).await;
-                            tracing::info!(session_id = %id, ?resolved, "reconciled -> reversed/returned");
-                        }
+                    SessionStatus::Returned | SessionStatus::Reversed
+                        if session_repo::try_transition(
+                            pool,
+                            id,
+                            &[SessionStatus::Processing],
+                            &resolved,
+                            Some(&tref),
+                        )
+                        .await
+                        .unwrap_or(false) =>
+                    {
+                        let _ =
+                            LedgerRepo::record_reversal(pool, merchant_id, id, amount_cents).await;
+                        tracing::info!(session_id = %id, ?resolved, "reconciled -> reversed/returned");
                     }
                     SessionStatus::Failed => {
-                        let _ = session_repo::try_transition(pool, id, &[SessionStatus::Processing], &SessionStatus::Failed, None).await;
+                        let _ = session_repo::try_transition(
+                            pool,
+                            id,
+                            &[SessionStatus::Processing],
+                            &SessionStatus::Failed,
+                            None,
+                        )
+                        .await;
                         tracing::info!(session_id = %id, "reconciled -> failed");
                     }
                     _ => {}
@@ -107,24 +132,39 @@ mod tests {
 
     #[test]
     fn settled_and_completed_map_to_completed() {
-        assert_eq!(map_provider_status("settled"), Some(SessionStatus::Completed));
-        assert_eq!(map_provider_status("completed"), Some(SessionStatus::Completed));
+        assert_eq!(
+            map_provider_status("settled"),
+            Some(SessionStatus::Completed)
+        );
+        assert_eq!(
+            map_provider_status("completed"),
+            Some(SessionStatus::Completed)
+        );
     }
 
     #[test]
     fn failed_and_cancelled_map_to_failed() {
         assert_eq!(map_provider_status("failed"), Some(SessionStatus::Failed));
-        assert_eq!(map_provider_status("cancelled"), Some(SessionStatus::Failed));
+        assert_eq!(
+            map_provider_status("cancelled"),
+            Some(SessionStatus::Failed)
+        );
     }
 
     #[test]
     fn returned_maps_to_returned() {
-        assert_eq!(map_provider_status("returned"), Some(SessionStatus::Returned));
+        assert_eq!(
+            map_provider_status("returned"),
+            Some(SessionStatus::Returned)
+        );
     }
 
     #[test]
     fn reversed_maps_to_reversed() {
-        assert_eq!(map_provider_status("reversed"), Some(SessionStatus::Reversed));
+        assert_eq!(
+            map_provider_status("reversed"),
+            Some(SessionStatus::Reversed)
+        );
     }
 
     #[test]

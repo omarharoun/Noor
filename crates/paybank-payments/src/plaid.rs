@@ -145,7 +145,7 @@ pub async fn create_link_token(session_id: &uuid::Uuid) -> Result<String, AppErr
     };
 
     let resp = c
-        .post(&format!("{}/link/token/create", plaid_base_url()))
+        .post(format!("{}/link/token/create", plaid_base_url()))
         .json(&request)
         .send()
         .await
@@ -171,7 +171,7 @@ pub async fn exchange_public_token(public_token: &str) -> Result<String, AppErro
     };
 
     let resp = c
-        .post(&format!("{}/item/public_token/exchange", plaid_base_url()))
+        .post(format!("{}/item/public_token/exchange", plaid_base_url()))
         .json(&request)
         .send()
         .await
@@ -182,10 +182,7 @@ pub async fn exchange_public_token(public_token: &str) -> Result<String, AppErro
         .await
         .map_err(|e| AppError::PlaidError(format!("failed to parse exchange response: {}", e)))?;
 
-    info!(
-        "Exchanged public token for item {}",
-        result.item_id
-    );
+    info!("Exchanged public token for item {}", result.item_id);
     Ok(result.access_token)
 }
 
@@ -200,7 +197,7 @@ pub async fn get_auth(access_token: &str) -> Result<Vec<BankAccountDetails>, App
     };
 
     let resp = c
-        .post(&format!("{}/auth/get", plaid_base_url()))
+        .post(format!("{}/auth/get", plaid_base_url()))
         .json(&request)
         .send()
         .await

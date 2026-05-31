@@ -31,7 +31,7 @@ pub async fn get_balance(
             .map_err(|e| AppError::Internal(e.into()))?;
     let pending = session_repo::pending_amount_cents(&state.db.pool, merchant_id)
         .await
-        .map_err(|e| AppError::Internal(e.into()))?;
+        .map_err(AppError::Internal)?;
 
     Ok(Json(BalanceResponse {
         merchant_id,
@@ -115,10 +115,9 @@ pub async fn create_payment_link(
 ) -> Result<Json<CreatePaymentLinkResponse>, AppError> {
     let bank_id = "021000021";
 
-    let bank =
-        bank_repo::get_bank(&state.db.pool, bank_id)
-            .await?
-            .ok_or(AppError::BankNotFound)?;
+    let bank = bank_repo::get_bank(&state.db.pool, bank_id)
+        .await?
+        .ok_or(AppError::BankNotFound)?;
 
     let rail = PaymentRail::choose(bank.supports_fednow, bank.supports_rtp, req.amount);
     let expires_at = Utc::now() + Duration::hours(24);
@@ -141,8 +140,5 @@ pub async fn create_payment_link(
         .unwrap_or_else(|| state.config.public_app_url.clone());
     let checkout_url = format!("{}/pay/{}", host, id);
 
-    Ok(Json(CreatePaymentLinkResponse {
-        checkout_url,
-        id,
-    }))
+    Ok(Json(CreatePaymentLinkResponse { checkout_url, id }))
 }

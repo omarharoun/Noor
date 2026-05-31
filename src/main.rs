@@ -23,7 +23,9 @@ async fn main() -> anyhow::Result<()> {
 
     // In production, refuse to start without working PII encryption (fail-closed):
     // never silently store bank account/routing numbers in plaintext.
-    let is_prod = std::env::var("NOOR_ENV").map(|v| v == "production").unwrap_or(false);
+    let is_prod = std::env::var("NOOR_ENV")
+        .map(|v| v == "production")
+        .unwrap_or(false);
     if is_prod && !paybank_core::crypto::is_configured() {
         anyhow::bail!("NOOR_ENV=production but PII_ENCRYPTION_KEY is missing/invalid (refusing to store PII unencrypted)");
     }
@@ -42,7 +44,10 @@ async fn main() -> anyhow::Result<()> {
     // Boot-time migrations run as the connecting role. With a least-privilege app
     // role (no DDL), set NOOR_SKIP_MIGRATE=true and run migrations as the owner
     // role in a separate deploy step.
-    if std::env::var("NOOR_SKIP_MIGRATE").map(|v| v == "true").unwrap_or(false) {
+    if std::env::var("NOOR_SKIP_MIGRATE")
+        .map(|v| v == "true")
+        .unwrap_or(false)
+    {
         info!("NOOR_SKIP_MIGRATE=true — skipping boot-time migrations");
     } else {
         sqlx::migrate!("./migrations").run(&pool).await?;

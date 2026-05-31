@@ -41,11 +41,10 @@ pub async fn get_dashboard_stats(pool: &PgPool) -> Result<DashboardStats> {
     .fetch_one(pool)
     .await?;
 
-    let pending_count: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*)::int8 FROM payment_sessions WHERE status = 'pending'",
-    )
-    .fetch_one(pool)
-    .await?;
+    let pending_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*)::int8 FROM payment_sessions WHERE status = 'pending'")
+            .fetch_one(pool)
+            .await?;
 
     let total_volume_cents: i64 = sqlx::query_scalar(
         "SELECT COALESCE(SUM(amount_cents)::int8, 0::int8) FROM payment_sessions WHERE status = 'completed'",
@@ -109,7 +108,10 @@ pub async fn list_all_sessions(
         idx += 1;
     }
     if date_to_val.is_some() {
-        where_clauses.push(format!("ps.created_at <= ${}::date + interval '1 day'", idx));
+        where_clauses.push(format!(
+            "ps.created_at <= ${}::date + interval '1 day'",
+            idx
+        ));
         idx += 1;
     }
 
@@ -166,7 +168,11 @@ pub async fn list_all_sessions(
     Ok((sessions, total))
 }
 
-pub async fn list_merchants(pool: &PgPool, limit: i64, offset: i64) -> Result<(Vec<Merchant>, i64)> {
+pub async fn list_merchants(
+    pool: &PgPool,
+    limit: i64,
+    offset: i64,
+) -> Result<(Vec<Merchant>, i64)> {
     let total: i64 = sqlx::query_scalar("SELECT COUNT(*)::int8 FROM merchants")
         .fetch_one(pool)
         .await?;
@@ -213,6 +219,7 @@ pub async fn create_merchant(
     Ok(merchant)
 }
 
+#[allow(clippy::too_many_arguments)] // one parameter per updatable column
 pub async fn update_merchant(
     pool: &PgPool,
     id: Uuid,
@@ -325,17 +332,21 @@ pub struct IssueSummary {
 }
 
 pub async fn get_issue_summary(pool: &PgPool) -> Result<IssueSummary> {
-    let scalar = |sql: &'static str| async move {
-        sqlx::query_scalar::<_, i64>(sql).fetch_one(pool).await
-    };
+    let scalar =
+        |sql: &'static str| async move { sqlx::query_scalar::<_, i64>(sql).fetch_one(pool).await };
     let stuck_processing = scalar(
         "SELECT COUNT(*)::int8 FROM payment_sessions WHERE status='processing' AND updated_at < NOW() - interval '5 minutes'",
     ).await?;
-    let failed_sessions = scalar("SELECT COUNT(*)::int8 FROM payment_sessions WHERE status='failed'").await?;
-    let returned_sessions = scalar("SELECT COUNT(*)::int8 FROM payment_sessions WHERE status='returned'").await?;
-    let reversed_sessions = scalar("SELECT COUNT(*)::int8 FROM payment_sessions WHERE status='reversed'").await?;
-    let webhooks_failed = scalar("SELECT COUNT(*)::int8 FROM webhook_events WHERE status='failed'").await?;
-    let webhooks_exhausted = scalar("SELECT COUNT(*)::int8 FROM webhook_events WHERE status='exhausted'").await?;
+    let failed_sessions =
+        scalar("SELECT COUNT(*)::int8 FROM payment_sessions WHERE status='failed'").await?;
+    let returned_sessions =
+        scalar("SELECT COUNT(*)::int8 FROM payment_sessions WHERE status='returned'").await?;
+    let reversed_sessions =
+        scalar("SELECT COUNT(*)::int8 FROM payment_sessions WHERE status='reversed'").await?;
+    let webhooks_failed =
+        scalar("SELECT COUNT(*)::int8 FROM webhook_events WHERE status='failed'").await?;
+    let webhooks_exhausted =
+        scalar("SELECT COUNT(*)::int8 FROM webhook_events WHERE status='exhausted'").await?;
     // Ledger integrity: every journal entry must have debits == credits. Any row
     // here is a real accounting discrepancy that needs investigation.
     let unbalanced_journal_entries = scalar(
@@ -346,7 +357,8 @@ pub async fn get_issue_summary(pool: &PgPool) -> Result<IssueSummary> {
                HAVING COALESCE(SUM(CASE WHEN direction='debit' THEN amount_cents ELSE 0 END),0)
                     <> COALESCE(SUM(CASE WHEN direction='credit' THEN amount_cents ELSE 0 END),0)
            ) q"#,
-    ).await?;
+    )
+    .await?;
 
     Ok(IssueSummary {
         stuck_processing,
