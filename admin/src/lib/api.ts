@@ -131,6 +131,17 @@ export interface Operator {
   created_at: string;
 }
 
+export interface AuditEntry {
+  id: string;
+  actor: string;
+  actor_role: string | null;
+  action: string;
+  target_type: string | null;
+  target_id: string | null;
+  metadata: unknown;
+  created_at: string;
+}
+
 const BASE = '/api/admin';
 
 function authHeaders(): Record<string, string> {
@@ -188,9 +199,22 @@ export const api = {
     get<{ events: WebhookEvent[]; total: number }>('/webhooks', params),
   retryWebhook: (id: string) => post<{ requeued: boolean }>(`/webhooks/${id}/retry`),
   health: () => get<HealthSummary>('/health'),
+  audit: () => get<{ entries: AuditEntry[] }>('/audit'),
   operators: () => get<{ operators: Operator[] }>('/operators'),
   createOperator: (body: { email: string; name: string; password: string; role?: string }) =>
     post<Operator>('/operators', body),
+  updateOperator: async (id: string, body: { is_active?: boolean; role?: string }): Promise<Operator> => {
+    const res = await fetch(`${BASE}/operators/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      handle401(res);
+      throw new Error((await res.text()) || 'Update failed');
+    }
+    return res.json() as Promise<Operator>;
+  },
 };
 
 export interface CreateSessionResult {

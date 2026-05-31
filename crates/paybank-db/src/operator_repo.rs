@@ -64,6 +64,39 @@ pub async fn create(
     Ok(row)
 }
 
+pub async fn get_summary_by_id(pool: &PgPool, id: Uuid) -> Result<Option<OperatorSummary>> {
+    let row = sqlx::query_as::<_, OperatorSummary>(
+        "SELECT id, email, name, role, is_active, created_at FROM operators WHERE id = $1",
+    )
+    .bind(id)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row)
+}
+
+/// Update an operator's active flag and/or role (NULL args leave the field as-is).
+pub async fn update(
+    pool: &PgPool,
+    id: Uuid,
+    is_active: Option<bool>,
+    role: Option<&str>,
+) -> Result<OperatorSummary> {
+    let row = sqlx::query_as::<_, OperatorSummary>(
+        "UPDATE operators
+         SET is_active = COALESCE($2, is_active),
+             role = COALESCE($3, role),
+             updated_at = NOW()
+         WHERE id = $1
+         RETURNING id, email, name, role, is_active, created_at",
+    )
+    .bind(id)
+    .bind(is_active)
+    .bind(role)
+    .fetch_one(pool)
+    .await?;
+    Ok(row)
+}
+
 pub async fn list(pool: &PgPool) -> Result<Vec<OperatorSummary>> {
     let rows = sqlx::query_as::<_, OperatorSummary>(
         "SELECT id, email, name, role, is_active, created_at

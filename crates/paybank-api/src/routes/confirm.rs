@@ -1,7 +1,7 @@
 use crate::state::AppState;
 use axum::{extract::State, Json};
 use paybank_core::{AppError, SessionStatus};
-use paybank_db::session_repo;
+use paybank_db::{audit_repo, session_repo};
 use paybank_payments::BankAccountDetails;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -143,6 +143,17 @@ pub async fn confirm_payment(
         Some(req.session_id),
         "session.authorized",
         serde_json::json!({ "session_id": req.session_id, "status": "authorized" }),
+    )
+    .await;
+
+    audit_repo::record(
+        &state.db.pool,
+        "customer",
+        None,
+        "session.confirm",
+        Some("session"),
+        Some(&req.session_id.to_string()),
+        serde_json::json!({ "counterparty_id": counterparty_id }),
     )
     .await;
 

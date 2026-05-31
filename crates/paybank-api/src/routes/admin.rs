@@ -6,7 +6,7 @@ use axum::{
     Extension, Json,
 };
 use paybank_core::{AppError, Merchant};
-use paybank_db::{admin_repo, operator_repo};
+use paybank_db::{admin_repo, audit_repo, operator_repo};
 use serde::Deserialize;
 use uuid::Uuid;
 
@@ -129,12 +129,23 @@ pub async fn get_merchant(
 
 pub async fn create_merchant(
     State(state): State<AppState>,
+    Extension(AuthedOperator(claims)): Extension<AuthedOperator>,
     Json(body): Json<CreateMerchantBody>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), AppError> {
     let api_key = format!("admin_{}", Uuid::new_v4());
     let merchant = admin_repo::create_merchant(&state.db.pool, &body.name, &body.email, &api_key)
         .await
         .map_err(|e| AppError::Internal(e))?;
+    audit_repo::record(
+        &state.db.pool,
+        &claims.sub,
+        Some(&claims.role),
+        "merchant.create",
+        Some("merchant"),
+        Some(&merchant.id.to_string()),
+        serde_json::json!({ "name": merchant.name, "email": merchant.email }),
+    )
+    .await;
     Ok((StatusCode::CREATED, Json(redact_merchant(&merchant))))
 }
 
@@ -188,6 +199,17 @@ pub async fn list_webhooks(
     Ok(Json(serde_json::json!({ "events": events, "total": total })))
 }
 
+/// Recent audit-log entries (who did what).
+pub async fn get_audit(
+    State(state): State<AppState>,
+    Extension(AuthedOperator(_claims)): Extension<AuthedOperator>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let entries = audit_repo::list(&state.db.pool, 100)
+        .await
+        .map_err(AppError::Internal)?;
+    Ok(Json(serde_json::json!({ "entries": entries })))
+}
+
 /// Internal health/issues summary for the ops console.
 pub async fn get_health(
     State(state): State<AppState>,
@@ -237,16 +259,82 @@ pub async fn create_operator(
     let op = operator_repo::create(&state.db.pool, &body.email, &body.name, &hash, &role)
         .await
         .map_err(AppError::Internal)?;
+    audit_repo::record(
+        &state.db.pool,
+        &claims.sub,
+        Some(&claims.role),
+        "operator.create",
+        Some("operator"),
+        Some(&op.id.to_string()),
+        serde_json::json!({ "email": op.email, "role": op.role }),
+    )
+    .await;
     Ok((StatusCode::CREATED, Json(serde_json::to_value(op).unwrap())))
+}
+
+#[derive(Deserialize)]
+pub struct UpdateOperatorBody {
+    is_active: Option<bool>,
+    role: Option<String>,
+}
+
+/// Owner-only: deactivate/reactivate or change an operator's role. Guards against
+/// the caller locking themselves out (no self-deactivate, no self-demote).
+pub async fn update_operator(
+    State(state): State<AppState>,
+    Extension(AuthedOperator(claims)): Extension<AuthedOperator>,
+    Path(id): Path<Uuid>,
+    Json(body): Json<UpdateOperatorBody>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    if claims.role != "owner" {
+        return Err(AppError::Unauthorized);
+    }
+    let target = operator_repo::get_summary_by_id(&state.db.pool, id)
+        .await
+        .map_err(AppError::Internal)?
+        .ok_or(AppError::Unauthorized)?;
+    if target.email == claims.sub {
+        if body.is_active == Some(false) {
+            return Err(AppError::ComplianceRejected("cannot deactivate your own account".into()));
+        }
+        if body.role.as_deref() == Some("operator") {
+            return Err(AppError::ComplianceRejected("cannot demote your own owner account".into()));
+        }
+    }
+    let updated = operator_repo::update(&state.db.pool, id, body.is_active, body.role.as_deref())
+        .await
+        .map_err(AppError::Internal)?;
+    audit_repo::record(
+        &state.db.pool,
+        &claims.sub,
+        Some(&claims.role),
+        "operator.update",
+        Some("operator"),
+        Some(&updated.id.to_string()),
+        serde_json::json!({ "is_active": updated.is_active, "role": updated.role }),
+    )
+    .await;
+    Ok(Json(serde_json::to_value(updated).unwrap()))
 }
 
 /// Requeue a failed/exhausted webhook event for immediate redelivery.
 pub async fn retry_webhook(
     State(state): State<AppState>,
+    Extension(AuthedOperator(claims)): Extension<AuthedOperator>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let requeued = paybank_db::webhook_repo::retry_now(&state.db.pool, id)
         .await
         .map_err(|e| AppError::Internal(e.into()))?;
+    audit_repo::record(
+        &state.db.pool,
+        &claims.sub,
+        Some(&claims.role),
+        "webhook.retry",
+        Some("webhook"),
+        Some(&id.to_string()),
+        serde_json::json!({ "requeued": requeued }),
+    )
+    .await;
     Ok(Json(serde_json::json!({ "requeued": requeued })))
 }

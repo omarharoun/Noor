@@ -1,5 +1,6 @@
 pub mod admin_repo;
 pub mod attempt_repo;
+pub mod audit_repo;
 pub mod bank_repo;
 pub mod idempotency_repo;
 pub mod ledger_repo;

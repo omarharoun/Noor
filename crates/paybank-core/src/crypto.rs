@@ -45,6 +45,12 @@ fn cipher() -> Option<&'static Aes256Gcm> {
         .as_ref()
 }
 
+/// Whether a valid PII encryption key is configured. Used at startup to
+/// fail-closed in production rather than silently storing plaintext.
+pub fn is_configured() -> bool {
+    cipher().is_some()
+}
+
 /// Encrypt a value for storage. Empty string in → empty string out.
 pub fn encrypt(plaintext: &str) -> String {
     if plaintext.is_empty() {

@@ -7,7 +7,18 @@ import { Card, Button, Avatar, Spinner, Empty } from '../components/primitives';
 export function Operators() {
   const { data, loading, error, reload } = useAsync(() => api.operators(), []);
   const [adding, setAdding] = useState(false);
+  const [actionErr, setActionErr] = useState<string | null>(null);
   const operators = data?.operators ?? [];
+
+  const update = async (id: string, body: { is_active?: boolean; role?: string }) => {
+    setActionErr(null);
+    try {
+      await api.updateOperator(id, body);
+      reload();
+    } catch (e) {
+      setActionErr(e instanceof Error ? e.message : String(e));
+    }
+  };
 
   return (
     <Card
@@ -20,6 +31,7 @@ export function Operators() {
       pad={false}
     >
       {adding && <AddOperatorModal onClose={() => setAdding(false)} onCreated={reload} />}
+      {actionErr && <div className="flash error" style={{ margin: 16 }}>{actionErr}</div>}
       <div className="tbl-wrap">
         <table className="ntbl">
           <thead>
@@ -28,6 +40,7 @@ export function Operators() {
               <th>Role</th>
               <th>Status</th>
               <th>Created</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
@@ -53,6 +66,25 @@ export function Operators() {
                   </span>
                 </td>
                 <td className="cell-muted">{fmtDate(o.created_at)}</td>
+                <td>
+                  <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => update(o.id, { role: o.role === 'owner' ? 'operator' : 'owner' })}
+                    >
+                      {o.role === 'owner' ? 'Make operator' : 'Make owner'}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      icon={o.is_active ? 'circle' : 'check'}
+                      onClick={() => update(o.id, { is_active: !o.is_active })}
+                    >
+                      {o.is_active ? 'Deactivate' : 'Activate'}
+                    </Button>
+                  </div>
+                </td>
               </tr>
             ))}
           </tbody>

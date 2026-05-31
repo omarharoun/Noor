@@ -106,9 +106,14 @@ pub fn build_router(state: AppState) -> Router {
             post(routes::admin::retry_webhook),
         )
         .route("/api/admin/health", get(routes::admin::get_health))
+        .route("/api/admin/audit", get(routes::admin::get_audit))
         .route(
             "/api/admin/operators",
             get(routes::admin::list_operators).post(routes::admin::create_operator),
+        )
+        .route(
+            "/api/admin/operators/:id",
+            axum::routing::patch(routes::admin::update_operator),
         )
         .route_layer(middleware::from_fn_with_state(state.clone(), auth::admin_auth));
 

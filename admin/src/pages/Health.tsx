@@ -34,6 +34,7 @@ export function Health() {
   const health = useAsync(() => api.health(), []);
   const stuck = useAsync(() => api.sessions({ status: 'processing', limit: 50 }), []);
   const hooks = useAsync(() => api.webhooks({ limit: 100 }), []);
+  const audit = useAsync(() => api.audit(), []);
 
   const h = health.data;
   const failedHooks = (hooks.data?.events ?? []).filter(
@@ -44,6 +45,7 @@ export function Health() {
     health.reload();
     stuck.reload();
     hooks.reload();
+    audit.reload();
   };
 
   return (
@@ -144,6 +146,44 @@ export function Health() {
           {hooks.loading && <div className="center-load"><Spinner /></div>}
           {!hooks.loading && failedHooks.length === 0 && (
             <Empty>No failed webhook deliveries. ✓</Empty>
+          )}
+        </div>
+      </Card>
+
+      <div className="section-gap" />
+
+      <Card title="Audit log" pad={false}>
+        <div className="tbl-wrap">
+          <table className="ntbl">
+            <thead>
+              <tr>
+                <th>When</th>
+                <th>Actor</th>
+                <th>Action</th>
+                <th>Target</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(audit.data?.entries ?? []).map((e) => (
+                <tr key={e.id}>
+                  <td className="cell-muted">{ago(e.created_at)}</td>
+                  <td>
+                    <span className="cell-strong">{e.actor}</span>
+                    {e.actor_role && <span className="cell-muted"> · {e.actor_role}</span>}
+                  </td>
+                  <td>
+                    <span className="rail-tag">{e.action}</span>
+                  </td>
+                  <td className="cell-id">
+                    {e.target_type ? `${e.target_type} ${short(e.target_id)}` : '—'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {audit.loading && <div className="center-load"><Spinner /></div>}
+          {!audit.loading && (audit.data?.entries.length ?? 0) === 0 && (
+            <Empty>No audit entries yet.</Empty>
           )}
         </div>
       </Card>

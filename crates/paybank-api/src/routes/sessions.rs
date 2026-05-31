@@ -1,10 +1,11 @@
+use crate::auth::AuthedOperator;
 use crate::state::AppState;
 use axum::{
     extract::{Path, Query, State},
-    Json,
+    Extension, Json,
 };
 use paybank_core::{AppError, CreateSessionRequest, CreateSessionResponse, PaymentRail, SessionStatus};
-use paybank_db::{bank_repo, session_repo};
+use paybank_db::{audit_repo, bank_repo, session_repo};
 use serde::Deserialize;
 use uuid::Uuid;
 use chrono::{Duration, Utc};
@@ -211,6 +212,7 @@ pub async fn stream_session(
 
 pub async fn initiate_payment(
     State(state): State<AppState>,
+    Extension(AuthedOperator(claims)): Extension<AuthedOperator>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let session = session_repo::get_session(&state.db.pool, id)
@@ -302,6 +304,17 @@ pub async fn initiate_payment(
                     Some(id),
                     "session.completed",
                     serde_json::json!({ "session_id": id, "status": "completed", "amount_cents": session.amount_cents }),
+                )
+                .await;
+
+                audit_repo::record(
+                    &state.db.pool,
+                    &claims.sub,
+                    Some(&claims.role),
+                    "session.initiate",
+                    Some("session"),
+                    Some(&id.to_string()),
+                    serde_json::json!({ "amount_cents": session.amount_cents, "transfer_id": transfer.provider_transfer_id }),
                 )
                 .await;
             }

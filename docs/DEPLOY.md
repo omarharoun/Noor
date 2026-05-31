@@ -50,6 +50,27 @@ LOCKED, the CAS/idempotency locking, double-entry ledger, migrations 001–003).
   should defer to MT's verification status (sync `kyc_status` from MT) rather
   than the built-in stub deny-list.
 
+## Production hardening
+- **Fail-closed PII**: set `NOOR_ENV=production`. The API then refuses to start
+  unless `PII_ENCRYPTION_KEY` is set and valid — no silent plaintext PII.
+- **Least-privilege DB role**: run the API as the DML-only `noor_app` role
+  (`docs/sql/least_privilege_role.sql`), set `NOOR_SKIP_MIGRATE=true`, and run
+  migrations separately as the owner role. A leaked API DB credential then can't
+  DROP/ALTER tables.
+- **Audit log**: every money-moving and admin action is recorded in `audit_log`
+  (visible under Health → Audit log). Keep it append-only; don't grant DELETE on
+  it to anything but admin.
+
+## KMS / envelope-encryption upgrade path
+Today PII uses AES-256-GCM with a single static `PII_ENCRYPTION_KEY` from the
+environment — strong, but the key sits in env. The production-grade upgrade:
+1. Keep the **master key (KEK) in a KMS/HSM** (AWS KMS, GCP KMS, Vault Transit).
+2. Generate a **unique data key (DEK) per record**, encrypt the field with the
+   DEK, and store the KMS-wrapped DEK alongside the ciphertext (envelope).
+3. Rotate the KEK in the KMS without re-encrypting data (only DEKs re-wrap).
+The `paybank_core::crypto` module is the single integration point — swap the
+key source behind it. This needs a chosen KMS + credentials; the rest is in place.
+
 ## Optional: Supabase Auth for operators
 - Supabase Auth (GoTrue) can replace the single bootstrap `ADMIN_EMAIL`/
   `ADMIN_PASSWORD` with real per-operator accounts, hashed credentials, and

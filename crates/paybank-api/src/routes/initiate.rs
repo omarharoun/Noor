@@ -1,7 +1,8 @@
+use crate::auth::AuthedOperator;
 use crate::state::AppState;
-use axum::{extract::State, Json};
+use axum::{extract::State, Extension, Json};
 use paybank_core::{AppError, SessionStatus};
-use paybank_db::session_repo;
+use paybank_db::{audit_repo, session_repo};
 use serde::Deserialize;
 use uuid::Uuid;
 
@@ -12,6 +13,7 @@ pub struct InitiateRequest {
 
 pub async fn initiate_session(
     State(state): State<AppState>,
+    Extension(AuthedOperator(claims)): Extension<AuthedOperator>,
     Json(req): Json<InitiateRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let session = session_repo::get_session(&state.db.pool, req.session_id)
@@ -118,6 +120,17 @@ pub async fn initiate_session(
                     Some(req.session_id),
                     "session.completed",
                     serde_json::json!({ "session_id": req.session_id, "status": "completed", "amount_cents": session.amount_cents }),
+                )
+                .await;
+
+                audit_repo::record(
+                    &state.db.pool,
+                    &claims.sub,
+                    Some(&claims.role),
+                    "session.initiate",
+                    Some("session"),
+                    Some(&req.session_id.to_string()),
+                    serde_json::json!({ "amount_cents": session.amount_cents, "transfer_id": transfer.provider_transfer_id }),
                 )
                 .await;
             }

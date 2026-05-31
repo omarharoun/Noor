@@ -20,7 +20,7 @@ use axum::{
 };
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use paybank_core::{AppError, Merchant};
-use paybank_db::operator_repo;
+use paybank_db::{audit_repo, operator_repo};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::sync::OnceLock;
@@ -167,6 +167,16 @@ pub async fn login(
 
     // Successful login clears the counter.
     state.login_throttle.lock().unwrap().remove(&body.email);
+    audit_repo::record(
+        &state.db.pool,
+        &op.email,
+        Some(&op.role),
+        "operator.login",
+        None,
+        None,
+        serde_json::json!({}),
+    )
+    .await;
     let token = issue_token(cfg, &op.email, &op.name, &op.role)?;
     Ok(Json(LoginResponse {
         token,
