@@ -112,6 +112,25 @@ export interface DashboardStats {
   last_7_days: DailyStat[];
 }
 
+export interface HealthSummary {
+  stuck_processing: number;
+  failed_sessions: number;
+  returned_sessions: number;
+  reversed_sessions: number;
+  webhooks_failed: number;
+  webhooks_exhausted: number;
+  unbalanced_journal_entries: number;
+}
+
+export interface Operator {
+  id: string;
+  email: string;
+  name: string;
+  role: string;
+  is_active: boolean;
+  created_at: string;
+}
+
 const BASE = '/api/admin';
 
 function authHeaders(): Record<string, string> {
@@ -168,6 +187,10 @@ export const api = {
   webhooks: (params?: { limit?: number; offset?: number }) =>
     get<{ events: WebhookEvent[]; total: number }>('/webhooks', params),
   retryWebhook: (id: string) => post<{ requeued: boolean }>(`/webhooks/${id}/retry`),
+  health: () => get<HealthSummary>('/health'),
+  operators: () => get<{ operators: Operator[] }>('/operators'),
+  createOperator: (body: { email: string; name: string; password: string; role?: string }) =>
+    post<Operator>('/operators', body),
 };
 
 export interface CreateSessionResult {

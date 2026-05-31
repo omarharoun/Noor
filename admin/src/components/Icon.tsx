@@ -24,6 +24,10 @@ import {
   Eye,
   Percent,
   Link as LinkIcon,
+  Users,
+  Activity,
+  LogOut,
+  PlusCircle,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -54,6 +58,10 @@ const REGISTRY: Record<string, LucideIcon> = {
   eye: Eye,
   percent: Percent,
   link: LinkIcon,
+  users: Users,
+  activity: Activity,
+  'log-out': LogOut,
+  'plus-circle': PlusCircle,
 };
 
 interface IconProps {

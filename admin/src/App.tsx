@@ -10,8 +10,18 @@ import { Merchants } from './pages/Merchants';
 import { Banks } from './pages/Banks';
 import { Settlements } from './pages/Settlements';
 import { Webhooks } from './pages/Webhooks';
+import { Health } from './pages/Health';
+import { Operators } from './pages/Operators';
 
-export type PageId = 'dashboard' | 'sessions' | 'merchants' | 'banks' | 'settlements' | 'webhooks';
+export type PageId =
+  | 'dashboard'
+  | 'sessions'
+  | 'merchants'
+  | 'banks'
+  | 'settlements'
+  | 'webhooks'
+  | 'health'
+  | 'operators';
 
 // Shared lookup so sessions/dashboard can show merchant names (the sessions
 // endpoint returns merchant_id only).
@@ -28,6 +38,8 @@ const TITLES: Record<PageId, [string, string]> = {
   banks: ['Banks', 'Supported institutions and rail coverage'],
   settlements: ['Settlements', 'Merchant balances and payouts'],
   webhooks: ['Webhooks', 'Event delivery log and retries'],
+  health: ['Health', 'Issues and anomalies to act on'],
+  operators: ['Operators', 'Console users and their roles'],
 };
 
 // ---- Inner console (rendered only when authenticated) ------------------------
@@ -61,6 +73,8 @@ function Console() {
     { id: 'banks' as const, label: 'Banks', icon: 'landmark' },
     { id: 'settlements' as const, label: 'Settlements', icon: 'wallet' },
     { id: 'webhooks' as const, label: 'Webhooks', icon: 'webhook', count: failedWebhooks },
+    { id: 'health' as const, label: 'Health', icon: 'activity' },
+    { id: 'operators' as const, label: 'Operators', icon: 'users' },
   ];
 
   const [title, sub] = TITLES[page];
@@ -84,7 +98,11 @@ function Console() {
           <NavItem key={n.id} n={n} active={page === n.id} onClick={() => setPage(n.id)} />
         ))}
         <div className="nav-section">Money</div>
-        {nav.slice(4).map((n) => (
+        {nav.slice(4, 6).map((n) => (
+          <NavItem key={n.id} n={n} active={page === n.id} onClick={() => setPage(n.id)} />
+        ))}
+        <div className="nav-section">System</div>
+        {nav.slice(6).map((n) => (
           <NavItem key={n.id} n={n} active={page === n.id} onClick={() => setPage(n.id)} />
         ))}
         <div className="sidebar-foot">
@@ -128,6 +146,8 @@ function Console() {
           {page === 'banks' && <Banks />}
           {page === 'settlements' && <Settlements />}
           {page === 'webhooks' && <Webhooks />}
+          {page === 'health' && <Health />}
+          {page === 'operators' && <Operators />}
         </div>
       </div>
     </div>

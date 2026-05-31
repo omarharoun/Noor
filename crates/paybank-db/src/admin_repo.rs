@@ -311,3 +311,50 @@ pub async fn get_merchant(pool: &PgPool, id: Uuid) -> Result<Option<Merchant>> {
     .await?;
     Ok(merchant)
 }
+
+/// Aggregate "is anything wrong right now" counters for the internal health view.
+#[derive(Debug, Serialize)]
+pub struct IssueSummary {
+    pub stuck_processing: i64,
+    pub failed_sessions: i64,
+    pub returned_sessions: i64,
+    pub reversed_sessions: i64,
+    pub webhooks_failed: i64,
+    pub webhooks_exhausted: i64,
+    pub unbalanced_journal_entries: i64,
+}
+
+pub async fn get_issue_summary(pool: &PgPool) -> Result<IssueSummary> {
+    let scalar = |sql: &'static str| async move {
+        sqlx::query_scalar::<_, i64>(sql).fetch_one(pool).await
+    };
+    let stuck_processing = scalar(
+        "SELECT COUNT(*)::int8 FROM payment_sessions WHERE status='processing' AND updated_at < NOW() - interval '5 minutes'",
+    ).await?;
+    let failed_sessions = scalar("SELECT COUNT(*)::int8 FROM payment_sessions WHERE status='failed'").await?;
+    let returned_sessions = scalar("SELECT COUNT(*)::int8 FROM payment_sessions WHERE status='returned'").await?;
+    let reversed_sessions = scalar("SELECT COUNT(*)::int8 FROM payment_sessions WHERE status='reversed'").await?;
+    let webhooks_failed = scalar("SELECT COUNT(*)::int8 FROM webhook_events WHERE status='failed'").await?;
+    let webhooks_exhausted = scalar("SELECT COUNT(*)::int8 FROM webhook_events WHERE status='exhausted'").await?;
+    // Ledger integrity: every journal entry must have debits == credits. Any row
+    // here is a real accounting discrepancy that needs investigation.
+    let unbalanced_journal_entries = scalar(
+        r#"SELECT COUNT(*)::int8 FROM (
+               SELECT journal_entry_id
+               FROM ledger_postings
+               GROUP BY journal_entry_id
+               HAVING COALESCE(SUM(CASE WHEN direction='debit' THEN amount_cents ELSE 0 END),0)
+                    <> COALESCE(SUM(CASE WHEN direction='credit' THEN amount_cents ELSE 0 END),0)
+           ) q"#,
+    ).await?;
+
+    Ok(IssueSummary {
+        stuck_processing,
+        failed_sessions,
+        returned_sessions,
+        reversed_sessions,
+        webhooks_failed,
+        webhooks_exhausted,
+        unbalanced_journal_entries,
+    })
+}

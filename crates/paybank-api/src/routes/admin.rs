@@ -188,6 +188,16 @@ pub async fn list_webhooks(
     Ok(Json(serde_json::json!({ "events": events, "total": total })))
 }
 
+/// Internal health/issues summary for the ops console.
+pub async fn get_health(
+    State(state): State<AppState>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let summary = admin_repo::get_issue_summary(&state.db.pool)
+        .await
+        .map_err(AppError::Internal)?;
+    Ok(Json(serde_json::to_value(summary).unwrap()))
+}
+
 // ---- operator (console user) management ----------------------------------
 
 pub async fn list_operators(
