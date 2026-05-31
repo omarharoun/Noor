@@ -105,22 +105,36 @@ async fn apply_webhook_status(
             )
             .await;
 
-            // Compensating ledger reversal on a real return/reversal.
-            if matches!(new_status, Returned | Reversed) {
-                if let Err(e) = paybank_db::ledger_repo::LedgerRepo::record_reversal(
-                    pool,
-                    s.merchant_id,
-                    session_id,
-                    s.amount_cents,
-                )
-                .await
-                {
-                    tracing::error!(
-                        session_id = %session_id,
-                        error = %e,
-                        "session reversed but ledger reversal failed — needs reconciliation"
-                    );
-                }
+            // Ledger postings. Because `changed` is true only when THIS webhook won
+            // the CAS transition, these fire at most once per session and never
+            // double-post against the initiate path (which, if it already completed
+            // the session, makes `changed` false here).
+            let ledger = match new_status {
+                // Async-settled (the normal ACH/wire path): initiate left the
+                // session Processing; the provider webhook completes it, so the
+                // settlement journal must be posted HERE.
+                Completed => Some(
+                    paybank_db::ledger_repo::LedgerRepo::record_settlement(
+                        pool, s.merchant_id, session_id, s.amount_cents,
+                    )
+                    .await,
+                ),
+                // Compensating reversal on a real return/reversal.
+                Returned | Reversed => Some(
+                    paybank_db::ledger_repo::LedgerRepo::record_reversal(
+                        pool, s.merchant_id, session_id, s.amount_cents,
+                    )
+                    .await,
+                ),
+                _ => None,
+            };
+            if let Some(Err(e)) = ledger {
+                tracing::error!(
+                    session_id = %session_id,
+                    status = ?new_status,
+                    error = %e,
+                    "webhook transitioned session but ledger posting failed — needs reconciliation"
+                );
             }
         }
     }
