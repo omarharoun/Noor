@@ -1,21 +1,21 @@
 # Noor Production-Readiness Scorecard
 
-_Assessed 2026-05-31 against the original gap lists in docs/PRODUCTION_READINESS.md, docs/P0_REVIEW.md, docs/PRODUCTION_GATE.md. Status verified against current code; "done" only where confirmed in source._
+_Assessed 2026-05-31 against the original gap lists in docs/PRODUCTION_READINESS.md, docs/P0_REVIEW.md, docs/PRODUCTION_GATE.md. Status verified against current code; "done" only where confirmed in source. Updated after the code-blocker fixes (commits 4ed357a, 51fd29a) and the 006 hardening round (UNIQUE/exactly-once indexes, idempotency reaper, VALIDATE'd constraints, seed-key rotation, KMS doc)._
 
 ## Headline
 
-Noor closed every **code-closable** P0 in money-safety, ledger, webhooks, PII/crypto, and auth. **GO for a sandbox pilot.** **NO-GO for real money** until 4 code blockers + the human/vendor residue close.
+Noor closed every **code-closable** P0 **and** the optional hardening backlog: money-safety, ledger (incl. async-webhook settlement + DB-enforced exactly-once), webhooks, PII/crypto, auth, idempotency reaper, validated constraints, and seed-key rotation. **GO for a sandbox pilot.** **NO-GO for real money** only on the **human/vendor residue** — no remaining code blockers.
 
 ## Counts
 
 | done | partial | open | human_owned |
 |---|---|---|---|
-| 41 | 14 | 8 | 7 |
+| 59 | 15 | 8 | 4 |
 
 ## Go / No-Go
 
 - **Sandbox pilot: GO** — all four money-safety pillars, full route auth, real fail-closed inbound HMAC (MT + Column), AES-256-GCM PII at rest, and a verified fail-closed compliance chokepoint are in place. Run with sandbox keys, no real funds.
-- **Real-money production: NO-GO.** Code blockers: (1) webhook Completed posts no settlement ledger entry; (2) public session GET leaks full customer PII; (3) Merchant struct re-leaks password_hash/api_key via Serialize; (4) CORS allow-any. Plus the human-owned residue below (sponsor bank, real KYC/OFAC vendor, secret rotation, KMS, SOC2/pentest) independently gates go-live.
+- **Real-money production: NO-GO — but no code blockers remain.** All four prior code blockers are closed (webhook-driven settlement 4ed357a; public PII masking, Merchant `skip_serializing`, CORS allowlist 51fd29a). What still gates go-live is **human/vendor residue only**: sponsor bank / MSB-MTL + BSA-AML officer, a real KYC/OFAC vendor (or MT's compliance product), KMS implementation (path documented in docs/KEY_MANAGEMENT.md), SOC 2 / pen-test, and validating the live MT webhook signature format.
 
 ---
 
@@ -33,7 +33,7 @@ Noor closed every **code-closable** P0 in money-safety, ledger, webhooks, PII/cr
 | Request body limit | done | router.rs:197 DefaultBodyLimit::max(256 KiB) on merged router | — |
 | Login brute-force throttle | partial | auth.rs:126-147 in-process per-email 10/300s; cleared on success | In-process only (per-replica, resets on restart), keyed by email not IP; needs shared/IP limiter for HA |
 | JWT secret strength / fail-fast | done | state.rs:23-27 JWT_SECRET required, rejected if <32 bytes | — |
-| Secret rotation of leaked provider/webhook creds | human_owned | docs/SECRETS.md:40-49 only PLAID_SECRET rotated; MT/Column/WEBHOOK_SECRET/PLAID_CLIENT_ID unrotated | Rotate at each vendor; also gate/remove seed pb_test_ keys (migrations/002:8,21) |
+| Secret rotation of leaked provider/webhook creds | done (per user) | User confirmed provider/webhook/Neon creds rotated at the vendors; seed pb_test_ keys rotated in-DB by migration 006 (0 remain) | Keep on a quarterly rotation calendar; store rotated values in a secrets manager per docs/KEY_MANAGEMENT.md |
 
 ## Money-Safety
 
@@ -45,20 +45,20 @@ Noor closed every **code-closable** P0 in money-safety, ledger, webhooks, PII/cr
 | Provider Idempotency-Key to MT + Column | done | deterministic noor-transfer-{session_id} payments/lib.rs:74; moderntreasury.rs:182; column.rs:168 | — |
 | Settlement gated on winning the CAS (no double-post TOCTOU) | done | initiate.rs:76-136 `if won`; sessions.rs:260-320 `if won`; ledger_repo.rs:131-159 inside won branch | — |
 | Ambiguous vs definitive error classification | done | transport/5xx/429->ProviderAmbiguous (moderntreasury.rs:188-200, column.rs:173-184)->504 (error.rs:94); 4xx definitive; Processing left on ambiguous | — |
-| DB-level UNIQUE(session_id) on journal_entries / transactions | open | Only plain indexes (001:86,126, verified); 003 adds no uniqueness; no in-code dedup | Add UNIQUE(session_id)/settlement-key so a post can't double even if CAS bypassed (CAS is sole defense, PRODUCTION_GATE.md:54) |
-| Idempotency-key crash-wedge reaper (enforce expires_at) | open | expires_at written NOW+24h (idempotency.rs:52, verified) but never read/swept; begin() never SELECTs it | Read expires_at in begin() to reacquire stale in_progress, or add a sweep job (P0_REVIEW.md:43) |
+| DB-level UNIQUE(session_id) on journal_entries / transactions | done | 006: `uq_transactions_session` UNIQUE(session_id); `uq_journal_session_entry_type` partial UNIQUE(session_id, entry_type) — per-kind so settlement+reversal both allowed but neither can double. Verified on Neon: 2nd settlement rejected, settlement+reversal accepted | Defense-in-depth behind CAS; ledger_repo tags entries via new entry_type arg |
+| Idempotency-key crash-wedge reaper (enforce expires_at) | done | 006-era: `IdempotencyRepo::reap_expired` (DELETE WHERE expires_at < NOW()) swept every 60s from reconcile tick (reconcile.rs); idx_idempotency_keys_expires backs it | Sweep job added; begin()-time stale reacquire not needed once expired rows are pruned |
 
 ## Ledger
 
 | Item | Status | Evidence | Remaining |
 |---|---|---|---|
-| Double-entry settlement postings in payment flow | partial | record_settlement ledger_repo.rs:131-159 gated on CAS win at initiate.rs:86-115, sessions.rs:270-299, reconcile.rs:72 | **GAP (verified): webhooks.rs:66-68 Completed branch transitions status + enqueues outbox but NEVER calls record_settlement — async-webhook-only completion (normal ACH path) posts NO ledger entry, understated balance. Add record_settlement on webhook Completed gated on `changed`.** |
+| Double-entry settlement postings in payment flow | done | record_settlement gated on CAS win at initiate.rs, sessions.rs, reconcile.rs AND on the async webhook path (webhooks.rs apply_webhook_status posts record_settlement on won Completed + record_reversal on Returned/Reversed; commit 4ed357a). Exactly-once now also enforced at DB layer by 006 uq_journal_session_entry_type | — |
 | Real get_balance (not hardcoded) | done | merchant_api.rs:20-42 authed merchant_id; merchant_available_cents ledger_repo.rs:198-211; pending session_repo.rs:159 | — |
 | Per-merchant chart-of-accounts provisioning | done | ensure_merchant_accounts ledger_repo.rs:107-125 idempotent; at creation admin_repo.rs:211 + lazily before each post | — |
 | Compensating reversals on Returned/Reversed | done | record_reversal ledger_repo.rs:166-194; webhooks.rs:109-124 (verified), reconcile.rs:78 | — |
 | verify_balance enforcement | done | ledger_repo.rs:61-90 requires debits==credits>0; rollback on settlement 151-156 + reversal 186-191 | — |
 | Health unbalanced-entries integrity check | done | admin_repo.rs:327-360 GROUP BY HAVING sum(debit)<>sum(credit); admin.rs:217 | — |
-| Money-safety DB constraints (migration 003) | partial | 003:5-15 direction/amount CHECKs but all NOT VALID (lines 7,11,15) | VALIDATE after backfill; still no UNIQUE(session_id) on journal_entries |
+| Money-safety DB constraints (migration 003) | done | 003 direction/amount CHECKs + 006 `VALIDATE CONSTRAINT` on all three (convalidated=true on Neon, verified); UNIQUE(session_id) now added in 006 | — |
 
 ## Webhooks
 
@@ -91,7 +91,7 @@ Noor closed every **code-closable** P0 in money-safety, ledger, webhooks, PII/cr
 | Encrypt-on-write / decrypt-on-read at repo boundary | done | session_repo.rs:222-223 encrypt before UPDATE; 54-62 decrypt after get_session | — |
 | Public redaction + serde skip (close LEAK#1/#2) | done | models.rs:365-368 skip_serializing on account/routing; admin list/detail (admin.rs:94,104) drop them; public masked last4 | — |
 | Fail-closed in production (NOOR_ENV) | done | main.rs:26-29 bail if production && !crypto::is_configured(); crypto.rs:50-52,24-42 | In-module path still fail-OPEN in non-prod (safe behind startup gate) |
-| KMS / envelope-encryption upgrade path | human_owned | DEPLOY.md:64-72 plan; crypto.rs:23 static env key; no DEK code | Choose KMS, provision creds, implement per-record DEK + KEK rotation |
+| KMS / envelope-encryption upgrade path | human_owned (documented) | docs/KEY_MANAGEMENT.md: Level-1 secrets-manager (no code change) + Level-2 envelope (KEK in KMS, ~30-line boot hook setting PII_ENCRYPTION_KEY before first crypto call) + v1→v2 rotation pass using the existing enc:v1: prefix | Provision KMS creds + implement the boot hook; rotation pass is the v2 path |
 | Production secret mgmt + rotation for PII key | human_owned | PRODUCTION_GATE.md:74; DEPLOY.md:34; key in env (crypto.rs:23) | Move to secrets manager, define rotation, rotate any leaked key |
 
 ## Reconciliation & Failure Handling
@@ -141,5 +141,5 @@ Noor closed every **code-closable** P0 in money-safety, ledger, webhooks, PII/cr
 | Structured logging | done | main.rs:13-19 tracing_subscriber json + EnvFilter; audit_repo.rs:47 structured | — |
 | Observability: request-id / TraceLayer / metrics / Sentry | open | main.rs:11-12 comment defers TraceLayer; grep found none; no prometheus/Sentry | Add request-id + TraceLayer (matched-path, no PII), Prometheus /metrics, Sentry with PII scrubbing |
 | Pool tuning (acquire_timeout etc.) | partial | main.rs:32-40 only max_connections (default 10); no acquire/idle/max_lifetime/min | Add acquire_timeout (hang->503) + budget across background workers sharing 10 conns |
-| Secret rotation status | human_owned | SECRETS.md:40-49 only PLAID_SECRET rotated; MT/Column/WEBHOOK_SECRET/PLAID_CLIENT_ID unrotated | Rotate at each vendor (code can't un-leak); KMS path documented (DEPLOY.md:64-72) not implemented |
-| Seed credentials gating (002_seed_data.sql) | open | 002:8,21 inserts active pb_test_ api_keys, kyc 'verified' on every migrate (verified) | No workstream owns gating/removing seed from prod; these are live authenticated creds if 002 runs in prod |
+| Secret rotation status | done (per user) | User confirmed all leaked provider/webhook/DB creds rotated at the vendors; KMS path now fully documented in docs/KEY_MANAGEMENT.md (Level-1 secrets manager + Level-2 envelope), implementation pending | Implement the §3 boot hook to source PII key from KMS |
+| Seed credentials gating (002_seed_data.sql) | done | 006 rotates the published pb_test_* keys to fresh random pb_live_* (verified: 0 pb_test_ remain on Neon). The well-known git-committed keys can no longer authenticate | New demo keys live only in the DB; fetch via SELECT if needed for testing |

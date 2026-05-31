@@ -10,7 +10,7 @@ use std::time::Duration;
 
 use crate::state::AppState;
 use paybank_core::SessionStatus;
-use paybank_db::{ledger_repo::LedgerRepo, session_repo};
+use paybank_db::{idempotency_repo::IdempotencyRepo, ledger_repo::LedgerRepo, session_repo};
 
 const TICK_SECS: u64 = 60;
 const STUCK_THRESHOLD_SECS: i64 = 300;
@@ -46,6 +46,13 @@ fn map_provider_status(s: &str) -> Option<SessionStatus> {
 }
 
 async fn tick(state: &AppState) -> Result<(), sqlx::Error> {
+    // Prune expired idempotency keys so the table doesn't grow without bound.
+    match IdempotencyRepo::reap_expired(&state.db.pool).await {
+        Ok(n) if n > 0 => tracing::info!(reaped = n, "pruned expired idempotency keys"),
+        Ok(_) => {}
+        Err(e) => tracing::warn!(error = %e, "idempotency-key reap failed; will retry next tick"),
+    }
+
     let stuck = session_repo::list_stuck_processing(&state.db.pool, STUCK_THRESHOLD_SECS, BATCH)
         .await
         .map_err(|e| sqlx::Error::Protocol(e.to_string()))?;

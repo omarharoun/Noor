@@ -2,7 +2,7 @@ use anyhow::Result;
 use chrono::{DateTime, Utc};
 use serde_json::Value;
 use paybank_core::IdempotencyKey;
-use sqlx::{Postgres, Transaction};
+use sqlx::{PgPool, Postgres, Transaction};
 use uuid::Uuid;
 
 pub struct IdempotencyRepo;
@@ -70,5 +70,16 @@ impl IdempotencyRepo {
         .execute(&mut **tx)
         .await?;
         Ok(())
+    }
+
+    /// Delete idempotency keys past their TTL. Keys exist only to dedupe retries
+    /// within a short window; once expired they are dead weight, and the
+    /// (merchant_id, idempotency_key) primary key means a never-pruned table grows
+    /// without bound. Returns the number of rows reaped. Runs on a background tick.
+    pub async fn reap_expired(pool: &PgPool) -> Result<u64, sqlx::Error> {
+        let result = sqlx::query!("DELETE FROM idempotency_keys WHERE expires_at < NOW()")
+            .execute(pool)
+            .await?;
+        Ok(result.rows_affected())
     }
 }

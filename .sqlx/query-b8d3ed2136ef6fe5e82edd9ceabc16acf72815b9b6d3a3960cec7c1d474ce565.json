@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            INSERT INTO journal_entries (session_id, description, status)\n            VALUES ($1, $2, 'posted')\n            RETURNING id, session_id, description, status, created_at\n            ",
+  "query": "\n            INSERT INTO journal_entries (session_id, description, status, entry_type)\n            VALUES ($1, $2, 'posted', $3)\n            RETURNING id, session_id, description, status, created_at\n            ",
   "describe": {
     "columns": [
       {
@@ -32,6 +32,7 @@
     "parameters": {
       "Left": [
         "Uuid",
+        "Text",
         "Text"
       ]
     },
@@ -43,5 +44,5 @@
       false
     ]
   },
-  "hash": "28f1a5def5e6bdf2e18846cba67606b1c9ed127004c5cea21cb404575b970ab4"
+  "hash": "b8d3ed2136ef6fe5e82edd9ceabc16acf72815b9b6d3a3960cec7c1d474ce565"
 }

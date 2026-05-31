@@ -14,20 +14,27 @@ const MERCHANT_ACCOUNTS: [(&str, &str); 4] = [
 pub struct LedgerRepo;
 
 impl LedgerRepo {
+    /// `entry_type` tags the kind of posting ('settlement' / 'reversal'). It is
+    /// covered by the partial unique index uq_journal_session_entry_type, so a
+    /// second settlement (or second reversal) for the same session is rejected at
+    /// the DB layer — defense-in-depth behind the caller's CAS guard. Pass `None`
+    /// for ad-hoc entries that aren't part of the exactly-once money flow.
     pub async fn create_journal_entry<'a>(
         tx: &mut Transaction<'a, Postgres>,
         session_id: Option<Uuid>,
         description: &str,
+        entry_type: Option<&str>,
     ) -> Result<JournalEntry, sqlx::Error> {
         let entry = sqlx::query_as!(
             JournalEntry,
             r#"
-            INSERT INTO journal_entries (session_id, description, status)
-            VALUES ($1, $2, 'posted')
+            INSERT INTO journal_entries (session_id, description, status, entry_type)
+            VALUES ($1, $2, 'posted', $3)
             RETURNING id, session_id, description, status, created_at
             "#,
             session_id,
-            description
+            description,
+            entry_type
         )
         .fetch_one(&mut **tx)
         .await?;
@@ -143,6 +150,7 @@ impl LedgerRepo {
             &mut tx,
             Some(session_id),
             &format!("Settlement for session {}", session_id),
+            Some("settlement"),
         )
         .await?;
         Self::create_posting(&mut tx, entry.id, cash.id, amount_cents, "debit").await?;
@@ -178,6 +186,7 @@ impl LedgerRepo {
             &mut tx,
             Some(session_id),
             &format!("Reversal for session {}", session_id),
+            Some("reversal"),
         )
         .await?;
         Self::create_posting(&mut tx, entry.id, settlement.id, amount_cents, "debit").await?;
