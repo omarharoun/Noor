@@ -127,8 +127,7 @@ pub async fn list_all_sessions(
     let limit_offset_sql = format!(" LIMIT ${} OFFSET ${}", idx, idx + 1);
     let query_sql = format!(
         r#"SELECT ps.id, ps.merchant_id, ps.bank_id, ps.amount_cents, ps.currency, ps.note,
-                  ps.status as "status: SessionStatus",
-                  ps.rail_used as "rail_used: PaymentRail",
+                  ps.status, ps.rail_used,
                   ps.column_ref, ps.column_counterparty_id,
                   ps.customer_name, ps.customer_email, ps.customer_phone,
                   ps.customer_address_line_1, ps.customer_address_city, ps.customer_address_state,
