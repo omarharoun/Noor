@@ -4,6 +4,7 @@ pub mod idempotency;
 pub mod reconcile;
 pub mod router;
 pub mod routes;
+pub mod secrets;
 pub mod state;
 pub mod webhook_worker;
 

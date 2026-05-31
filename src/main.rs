@@ -18,6 +18,18 @@ async fn main() -> anyhow::Result<()> {
         )
         .init();
 
+    // Load any file-backed secrets (Docker/Compose/Swarm secrets, k8s secret
+    // volumes) BEFORE anything reads the environment: `FOO_FILE=/run/secrets/x`
+    // populates `FOO` from the file. Must precede Config::from_env and the
+    // crypto/DB reads below.
+    match paybank_api::secrets::load_file_backed_secrets() {
+        Ok(loaded) if !loaded.is_empty() => {
+            info!(secrets = ?loaded, "loaded file-backed secrets")
+        }
+        Ok(_) => {}
+        Err(e) => anyhow::bail!("failed to load file-backed secret: {e}"),
+    }
+
     // Fail fast on missing/invalid config rather than at first request.
     let config = Config::from_env()?;
 

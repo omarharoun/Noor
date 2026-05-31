@@ -32,12 +32,29 @@ Store the raw secrets in a managed secret store and inject them at process start
 No code change to Noor — it still reads env vars; the platform populates them
 from the vault instead of a `.env` file on disk.
 
+- **Docker / Compose / Swarm secrets** (implemented — see below): each secret is
+  mounted as a file under `/run/secrets/<name>`; Noor reads `FOO` from the file
+  named by `FOO_FILE`. Use `docker-compose.secrets.yml`.
 - **AWS**: Secrets Manager (or SSM Parameter Store, SecureString). Grant the
   task role `secretsmanager:GetSecretValue` on exactly these ARNs.
 - **GCP**: Secret Manager, mounted as env or fetched at boot.
 - **Fly.io / Railway / Render / container host**: their built-in encrypted
   secrets store (`fly secrets set`, etc.).
 - **HashiCorp Vault**: `kv` engine, app authenticates with AppRole.
+- **Kubernetes**: mount a Secret as a volume and point the `*_FILE` vars at it —
+  same code path as Docker secrets.
+
+#### File-backed secrets (`*_FILE`) — implemented
+
+`crates/paybank-api/src/secrets.rs` runs first in `main` and applies the
+convention the official Postgres/MySQL images use: for any env var `FOO`, if
+`FOO_FILE` is set and points at a readable file, that file's contents become
+`FOO`. The raw secret stays out of the process environment, so it can't leak via
+`docker inspect`, `/proc/<pid>/environ`, or an env crash dump. A `*_FILE` that
+points at a missing or empty file is **fatal at boot** (fail fast, never fall
+back to a stale/unset secret). Wire-up is in `docker-compose.secrets.yml`
+(secret material goes in the gitignored `secrets/` dir); for Swarm/prod prefer
+`docker secret create` over `file:` sources.
 
 What this buys you: secrets are encrypted at rest in the vault, access is
 IAM-scoped and audit-logged, and rotation is a vault update + process restart —
@@ -79,8 +96,9 @@ The crypto layer is already isolated and **versioned** — `crypto.rs` tags
 ciphertext with `enc:v1:` and reads the key through a single `cipher()` accessor.
 That makes the KMS swap a localized change:
 
-**Level 1 (no code change):** platform injects `PII_ENCRYPTION_KEY` etc. from the
-secrets manager. Done.
+**Level 1 (implemented):** the platform injects secrets either as env vars
+(cloud secret managers) or as files via the `*_FILE` convention
+(`secrets.rs`, for Docker/Swarm/k8s). Either way, no per-secret code change.
 
 **Level 2 (envelope):** add a boot step that resolves the DEK from KMS and sets
 `PII_ENCRYPTION_KEY` in-process *before the first crypto call* (the `OnceLock`
@@ -123,11 +141,12 @@ available until the re-encrypt pass completes.
 
 Given Neon (DB) + a container host (API) + Cloudflare (static/DNS):
 
-1. **Now (Level 1):** move all `.env` secrets into your host's encrypted secrets
-   store (or AWS Secrets Manager / GCP Secret Manager if you're on a cloud VM).
-   Delete `.env` from any deployed host. Scope read access to the API's role
-   only. This is a config task, **no code change**, and removes the
-   biggest remaining "secrets at rest in plaintext" exposure.
+1. **Now (Level 1 — code already in place):** move all `.env` secrets into your
+   host's encrypted secrets store (or AWS/GCP Secret Manager on a cloud VM), or
+   use Docker/Swarm secrets via `docker-compose.secrets.yml` + the `*_FILE`
+   loader. Delete `.env` from any deployed host. Scope read access to the API's
+   role only. This is now just a config/ops task and removes the biggest
+   remaining "secrets at rest in plaintext" exposure.
 2. **Before scale (Level 2):** put `PII_ENCRYPTION_KEY` behind AWS KMS (or GCP
    KMS / Cloud HSM) envelope encryption using the boot hook in §3. ~30 lines.
 3. **Operationally:** enable the KMS/secret-manager audit log, set an IAM policy
