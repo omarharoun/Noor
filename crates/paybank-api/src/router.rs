@@ -1,12 +1,12 @@
 use axum::{
     extract::{DefaultBodyLimit, Path, Request, State},
-    http::StatusCode,
+    http::{header, HeaderName, HeaderValue, Method, StatusCode},
     middleware,
     response::{IntoResponse, Response},
     routing::{get, post},
     Router,
 };
-use tower_http::cors::{Any, CorsLayer};
+use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::services::ServeDir;
 use uuid::Uuid;
 
@@ -182,13 +182,38 @@ pub fn build_router(state: AppState) -> Router {
         .route("/admin/*path", get(admin_handler))
         .nest_service("/static", ServeDir::new("web"));
 
-    // Bearer tokens travel in the Authorization header (not cookies), so we don't
-    // allow credentials; a 256 KiB body cap protects the JSON handlers from abuse.
-    // Tighten allow_origin to specific operator origins before exposing publicly.
+    // Restrict CORS to configured origins (CORS_ALLOWED_ORIGINS, comma-separated;
+    // defaults to PUBLIC_APP_URL). Bearer tokens travel in the Authorization
+    // header (not cookies), so credentials stay off; a 256 KiB body cap guards
+    // the JSON handlers.
+    let mut origins: Vec<HeaderValue> = std::env::var("CORS_ALLOWED_ORIGINS")
+        .ok()
+        .map(|s| {
+            s.split(',')
+                .filter_map(|o| HeaderValue::from_str(o.trim()).ok())
+                .collect()
+        })
+        .unwrap_or_default();
+    if origins.is_empty() {
+        if let Ok(hv) = HeaderValue::from_str(&state.config.public_app_url) {
+            origins.push(hv);
+        }
+    }
     let cors = CorsLayer::new()
-        .allow_origin(Any)
-        .allow_methods(Any)
-        .allow_headers(Any);
+        .allow_origin(AllowOrigin::list(origins))
+        .allow_methods([
+            Method::GET,
+            Method::POST,
+            Method::PUT,
+            Method::PATCH,
+            Method::DELETE,
+        ])
+        .allow_headers([
+            header::AUTHORIZATION,
+            header::CONTENT_TYPE,
+            HeaderName::from_static("x-api-key"),
+            HeaderName::from_static("idempotency-key"),
+        ]);
 
     public
         .merge(admin)

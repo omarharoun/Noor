@@ -173,7 +173,11 @@ pub struct Merchant {
     pub id: Uuid,
     pub name: String,
     pub email: String,
+    // Secrets: never serialized to API responses (loaded via sqlx FromRow, not
+    // serde). Defense-in-depth behind the hand-written redact_merchant projection.
+    #[serde(skip_serializing)]
     pub password_hash: Option<String>,
+    #[serde(skip_serializing)]
     pub api_key: String,
     pub webhook_url: Option<String>,
     pub business_name: Option<String>,

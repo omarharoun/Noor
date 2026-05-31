@@ -133,11 +133,11 @@ async function load() {
         <div class="inv-section">Customer</div>
         <div class="inv-grid c3">
           <div class="fld"><label>Name</label><div class="v">${s.customer_name}</div></div>
-          <div class="fld"><label>Email</label><div class="v">${s.customer_email || '—'}</div></div>
-          <div class="fld"><label>Phone</label><div class="v">${s.customer_phone || '—'}</div></div>
+          <div class="fld"><label>Email</label><div class="v">${s.customer_email_masked || '—'}</div></div>
+          <div class="fld"><label>Phone</label><div class="v">${s.customer_phone_last4 || '—'}</div></div>
         </div>
         <div class="inv-grid" style="margin-top:16px">
-          <div class="fld"><label>Address</label><div class="v">${[s.customer_address_line_1, s.customer_address_city, s.customer_address_state, s.customer_address_postal_code].filter(Boolean).join(', ') || '—'}</div></div>
+          <div class="fld"><label>Location</label><div class="v">${[s.customer_address_city, s.customer_address_state, s.customer_address_country_code].filter(Boolean).join(', ') || '—'}</div></div>
         </div>` : ''}
 
         ${s.bank_linked ? `

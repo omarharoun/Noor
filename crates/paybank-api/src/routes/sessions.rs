@@ -119,6 +119,9 @@ pub async fn get_session(
         .filter(|n| n.len() >= 4)
         .map(|n| n[n.len() - 4..].to_string());
 
+    // This endpoint is reached with only the unguessable session UUID (no auth),
+    // so contact PII is minimized: email/phone masked, street line dropped. The
+    // authenticated admin detail endpoint has the full record.
     Ok(Json(serde_json::json!({
         "id": s.id,
         "merchant_id": s.merchant_id,
@@ -131,12 +134,11 @@ pub async fn get_session(
         "column_ref": s.column_ref,
         "column_counterparty_id": s.column_counterparty_id,
         "customer_name": s.customer_name,
-        "customer_email": s.customer_email,
-        "customer_phone": s.customer_phone,
-        "customer_address_line_1": s.customer_address_line_1,
+        "customer_email_masked": mask_email(s.customer_email.as_deref()),
+        "customer_phone_last4": last4(s.customer_phone.as_deref()),
+        // Street line withheld; coarse location only.
         "customer_address_city": s.customer_address_city,
         "customer_address_state": s.customer_address_state,
-        "customer_address_postal_code": s.customer_address_postal_code,
         "customer_address_country_code": s.customer_address_country_code,
         "customer_account_type": s.customer_account_type,
         // Redacted: never expose the full account/routing number publicly.
@@ -146,6 +148,24 @@ pub async fn get_session(
         "created_at": s.created_at,
         "updated_at": s.updated_at,
     })))
+}
+
+/// Mask an email to `d***@example.com` form for the unauthenticated view.
+fn mask_email(email: Option<&str>) -> Option<String> {
+    let e = email?;
+    let (local, domain) = e.split_once('@')?;
+    let first = local.chars().next().unwrap_or('*');
+    Some(format!("{first}***@{domain}"))
+}
+
+fn last4(s: Option<&str>) -> Option<String> {
+    let v = s?;
+    let digits: String = v.chars().filter(|c| c.is_ascii_digit()).collect();
+    if digits.len() >= 4 {
+        Some(format!("•••• {}", &digits[digits.len() - 4..]))
+    } else {
+        None
+    }
 }
 
 pub async fn get_session_qr(
