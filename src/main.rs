@@ -78,7 +78,14 @@ async fn main() -> anyhow::Result<()> {
 
     let router = build_router(state);
 
-    let addr = std::env::var("BIND_ADDR").unwrap_or_else(|_| "0.0.0.0:8888".into());
+    // Bind address: an explicit BIND_ADDR wins; otherwise honor the platform's
+    // injected PORT (Railway/Render/Heroku/Fly all set it) and fall back to
+    // 8888 for local/dev.
+    let addr = std::env::var("BIND_ADDR").unwrap_or_else(|_| {
+        std::env::var("PORT")
+            .map(|p| format!("0.0.0.0:{p}"))
+            .unwrap_or_else(|_| "0.0.0.0:8888".into())
+    });
     info!("Noor API starting on {}", addr);
 
     let listener = tokio::net::TcpListener::bind(&addr).await?;
