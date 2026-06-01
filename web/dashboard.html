@@ -102,7 +102,7 @@ table.mtbl{width:100%;border-collapse:collapse;font-size:13px}
 .mtbl th{text-align:left;padding:10px 18px;font-size:10px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-3);background:var(--surface-2);border-bottom:1px solid var(--border);white-space:nowrap}
 .mtbl td{padding:13px 18px;border-bottom:1px solid var(--border);color:var(--ink-2);vertical-align:middle}
 .mtbl tbody tr:last-child td{border-bottom:none}
-.mtbl tbody tr{cursor:pointer;transition:.1s}
+.mtbl tbody tr{transition:.1s}
 .mtbl tbody tr:hover td{background:var(--cream)}
 .mtbl tbody tr.sel td{background:var(--cream-deep)}
 .cell-id{font-family:var(--font-mono);font-size:11.5px;color:var(--ink-3)}
@@ -140,7 +140,7 @@ pre{background:var(--cream-deep);border:1px solid var(--border);border-radius:va
 </style>
 </head>
 <body>
-<div class="app">
+<div class="app" style="display:none">
   <aside class="sidebar">
     <div class="brand-row">
       <span class="brand-glyph"><svg viewBox="0 0 34 34" style="position:absolute;inset:0"><path d="M23 9.5a9 9 0 1 0 0 15 7 7 0 1 1 0-15Z" fill="var(--cream)"/></svg></span>
@@ -148,77 +148,109 @@ pre{background:var(--cream-deep);border:1px solid var(--border);border-radius:va
     </div>
     <div class="brand-divider"></div>
     <button class="nav-item active" data-tab="overview"><i data-lucide="layout-dashboard"></i>Overview</button>
-    <button class="nav-item" data-tab="sessions"><i data-lucide="arrow-left-right"></i>Sessions</button>
-    <button class="nav-item" data-tab="create"><i data-lucide="plus-circle"></i>New session</button>
-    <button class="nav-item" data-tab="transactions"><i data-lucide="receipt"></i>Transactions</button>
-    <button class="nav-item" data-tab="plaid"><i data-lucide="link"></i>Plaid</button>
+    <button class="nav-item" data-tab="payments"><i data-lucide="receipt"></i>Payments</button>
+    <button class="nav-item" data-tab="create"><i data-lucide="plus-circle"></i>Payment link</button>
     <div class="sidebar-foot">
       <div class="brand-divider"></div>
-      <div class="foot-user"><span class="avatar" style="width:32px;height:32px;font-size:12px">MQ</span><div><div class="nm">Mara Quinn</div><div class="em">Operations</div></div></div>
+      <div class="foot-user"><span class="avatar" style="width:32px;height:32px;font-size:12px">M</span><div><div class="nm" id="foot-name">Merchant</div><div class="em">Business account</div></div></div>
     </div>
   </aside>
   <div class="main">
     <header class="topbar">
       <h1 id="page-title">Overview</h1>
       <div class="spacer"></div>
-      <button class="mbtn mbtn-primary mbtn-sm" onclick="switchTab('create')"><i data-lucide="plus" style="width:14px;height:14px"></i>New session</button>
-      <button class="icon-btn"><i data-lucide="bell" style="width:17px;height:17px"></i></button>
+      <button class="mbtn mbtn-primary mbtn-sm" onclick="switchTab('create')"><i data-lucide="plus" style="width:14px;height:14px"></i>New payment link</button>
+      <button class="icon-btn" title="Sign out" onclick="logout()"><i data-lucide="log-out" style="width:17px;height:17px"></i></button>
     </header>
     <div class="content">
-      <p class="intro" id="page-intro">Your balance, volume and recent activity.</p>
+      <p class="intro" id="page-intro">Your balance and recent payment activity.</p>
       <div id="section-overview" class="section active"></div>
-      <div id="section-sessions" class="section"></div>
+      <div id="section-payments" class="section"></div>
       <div id="section-create" class="section"></div>
-      <div id="section-transactions" class="section"></div>
-      <div id="section-plaid" class="section"></div>
     </div>
   </div>
 </div>
 
 <script src="https://unpkg.com/lucide@0.456.0/dist/umd/lucide.min.js"></script>
 <script>
-const API = '';
-const MERCHANT_ID = '00000000-0000-0000-0000-000000000001';
-let selectedSessionId = null;
+/* Merchant dashboard — authenticates with a merchant API key (x-api-key) and
+   talks ONLY to the merchant-scoped /api/merchant-api/* endpoints plus the
+   public /api/banks and /api/sessions/:id/qr. Operator-only actions
+   (initiate transfer, list all sessions) live in the operator console. */
+const KEY_STORE = 'noor_merchant_key';
+const DUMMY_ID = '00000000-0000-0000-0000-000000000000';
+let API_KEY = localStorage.getItem(KEY_STORE) || '';
+let MERCHANT_ID = null;
 
 const TITLES = {
-  overview: ['Overview', 'Your balance, volume and recent activity.'],
-  sessions: ['Sessions', 'Every payment session and its lifecycle.'],
-  create: ['New session', 'Create a payment session to share with a customer.'],
-  transactions: ['Transactions', 'Settled transfers across your rails.'],
-  plaid: ['Plaid', 'Link bank accounts and exchange public tokens.'],
+  overview: ['Overview', 'Your balance and recent payment activity.'],
+  payments: ['Payments', 'Settled and in-flight payments on your account.'],
+  create:   ['Payment link', 'Create a hosted checkout link to collect a payment.'],
 };
-const TONE = { pending:'warning', authorized:'neutral', processing:'info', completed:'success', expired:'danger' };
-const LABEL = { pending:'Pending', authorized:'Authorized', processing:'Processing', completed:'Completed', expired:'Expired' };
-const fmt = (c) => '$' + (c/100).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
-const fmtCompact = (c) => { const d=c/100; return d>=1000 ? '$'+(d/1000).toFixed(d>=10000?0:1)+'k' : '$'+d.toFixed(0); };
-const badge = (s) => `<span class="mbadge tone-${TONE[s]||'neutral'}"><span class="mbadge-dot"></span>${LABEL[s]||s}</span>`;
-const icons = () => { if (window.lucide) lucide.createIcons({ attrs: { 'stroke-width': 1.75 } }); };
+const fmt = (c) => '$' + ((c||0)/100).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+const TONE = { settled:'success', completed:'success', processing:'info', pending:'warning', authorized:'neutral', failed:'danger', returned:'danger', reversed:'danger', expired:'danger' };
+const badge = (s) => `<span class="mbadge tone-${TONE[s]||'neutral'}"><span class="mbadge-dot"></span>${s||'—'}</span>`;
+const icons = () => { if (window.lucide) lucide.createIcons({ attrs:{'stroke-width':1.75} }); };
 
+/* ---------- auth ---------- */
 async function api(path, opts = {}) {
-  const res = await fetch(API + path, { headers: { 'Content-Type': 'application/json', ...opts.headers }, ...opts });
-  if (!res.ok) { const t = await res.text(); let m=t; try{const j=JSON.parse(t);m=j.error||j.message||t}catch{} throw new Error(m); }
-  return res.json();
+  const res = await fetch(path, { headers: { 'Content-Type':'application/json', 'x-api-key': API_KEY, ...(opts.headers||{}) }, ...opts });
+  if (res.status === 401) { doLogout('Your API key was rejected — please sign in again.'); throw new Error('unauthorized'); }
+  if (!res.ok) { const t = await res.text(); let m=t; try{const j=JSON.parse(t); m=j.error||j.message||t;}catch{} throw new Error(m); }
+  const ct = res.headers.get('content-type') || '';
+  return ct.includes('json') ? res.json() : res.text();
+}
+function doLogout(msg){ localStorage.removeItem(KEY_STORE); API_KEY=''; MERCHANT_ID=null; renderGate(msg); }
+function logout(){ doLogout(); }
+
+function renderGate(err){
+  document.querySelector('.app').style.display='none';
+  let g = document.getElementById('gate');
+  if (!g){ g=document.createElement('div'); g.id='gate'; document.body.appendChild(g); }
+  g.style.cssText='position:fixed;inset:0;display:grid;place-items:center;background:var(--cream);z-index:100;padding:20px';
+  g.innerHTML = `<div style="width:100%;max-width:390px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);box-shadow:var(--shadow-md);padding:30px">
+    <div style="display:flex;align-items:center;gap:10px"><span class="brand-glyph" style="width:30px;height:30px"><svg viewBox="0 0 34 34" style="position:absolute;inset:0"><path d="M23 9.5a9 9 0 1 0 0 15 7 7 0 1 1 0-15Z" fill="var(--cream)"/></svg></span><div class="brand-name" style="font-size:17px">Noor</div></div>
+    <h2 style="font-family:var(--font-serif);font-weight:500;font-size:22px;margin:16px 0 4px">Merchant sign in</h2>
+    <p style="color:var(--ink-3);font-size:13px;margin-bottom:18px">Enter your merchant API key to access your dashboard.</p>
+    ${err?`<div class="flash error">${err}</div>`:''}
+    <form id="gateForm"><div class="field"><label>API key</label><input id="gate-key" type="password" placeholder="pb_live_…" autocomplete="off"></div>
+      <button class="mbtn mbtn-primary mbtn-md" type="submit" style="width:100%;justify-content:center">Sign in</button></form>
+    <div id="gate-err" style="margin-top:12px"></div></div>`;
+  icons();
+  document.getElementById('gateForm').addEventListener('submit', async e=>{
+    e.preventDefault();
+    const key = document.getElementById('gate-key').value.trim();
+    if(!key) return;
+    const btn=e.target.querySelector('button'); btn.disabled=true; btn.textContent='Signing in…';
+    try{
+      const res = await fetch('/api/merchant-api/balances/'+DUMMY_ID, { headers:{'x-api-key':key} });
+      if(!res.ok) throw new Error('Invalid API key');
+      const bal = await res.json();
+      API_KEY = key; MERCHANT_ID = bal.merchant_id; localStorage.setItem(KEY_STORE, key);
+      const g2=document.getElementById('gate'); if(g2) g2.remove();
+      document.querySelector('.app').style.display='';
+      boot();
+    }catch(err){ document.getElementById('gate-err').innerHTML = `<div class="flash error">${err.message}</div>`; btn.disabled=false; btn.textContent='Sign in'; }
+  });
+  setTimeout(()=>document.getElementById('gate-key')?.focus(), 60);
 }
 
-document.querySelectorAll('.nav-item').forEach(a => {
-  a.addEventListener('click', () => {
-    document.querySelectorAll('.nav-item').forEach(x => x.classList.remove('active'));
-    document.querySelectorAll('.section').forEach(x => x.classList.remove('active'));
-    a.classList.add('active');
-    const tab = a.dataset.tab;
-    document.getElementById('section-' + tab).classList.add('active');
-    const [t, i] = TITLES[tab];
-    document.getElementById('page-title').textContent = t;
-    document.getElementById('page-intro').textContent = i;
-    if (tab === 'sessions') loadSessions();
-    if (tab === 'transactions') loadTransactions();
-  });
-});
-function switchTab(name) { document.querySelector(`.nav-item[data-tab="${name}"]`)?.click(); }
+/* ---------- nav ---------- */
+document.querySelectorAll('.nav-item').forEach(a => a.addEventListener('click', () => {
+  document.querySelectorAll('.nav-item').forEach(x=>x.classList.remove('active'));
+  document.querySelectorAll('.section').forEach(x=>x.classList.remove('active'));
+  a.classList.add('active');
+  const tab=a.dataset.tab;
+  document.getElementById('section-'+tab).classList.add('active');
+  const [t,i]=TITLES[tab]; document.getElementById('page-title').textContent=t; document.getElementById('page-intro').textContent=i;
+  if(tab==='overview') loadOverview();
+  if(tab==='payments') loadPayments();
+  if(tab==='create') renderCreate();
+}));
+function switchTab(name){ document.querySelector(`.nav-item[data-tab="${name}"]`)?.click(); }
 
-/* ==================== OVERVIEW ==================== */
-async function loadOverview() {
+/* ---------- overview ---------- */
+async function loadOverview(){
   const el = document.getElementById('section-overview');
   el.innerHTML = `
     <div class="balance-hero">
@@ -226,259 +258,122 @@ async function loadOverview() {
         <div class="bk-label">Available balance</div>
         <div class="bk-amount" id="ov-balance">—</div>
         <div class="bk-row">
-          <div><div class="bk-sub-l">Pending</div><div class="bk-sub-v" id="ov-pending-bal">—</div></div>
+          <div><div class="bk-sub-l">Pending</div><div class="bk-sub-v" id="ov-pending">—</div></div>
           <div><div class="bk-sub-l">Currency</div><div class="bk-sub-v">USD</div></div>
         </div>
         <div class="bk-actions">
-          <button class="bk-btn" onclick="switchTab('create')"><i data-lucide="plus" style="width:14px;height:14px"></i>New session</button>
-          <button class="bk-btn" onclick="switchTab('transactions')"><i data-lucide="receipt" style="width:14px;height:14px"></i>Transactions</button>
+          <button class="bk-btn" onclick="switchTab('create')"><i data-lucide="plus" style="width:14px;height:14px"></i>New payment link</button>
+          <button class="bk-btn" onclick="switchTab('payments')"><i data-lucide="receipt" style="width:14px;height:14px"></i>Payments</button>
         </div>
       </div>
       <div class="mini-stats">
-        <div class="mini-stat"><div class="ms-ico"><i data-lucide="check-circle-2" style="width:17px;height:17px;color:var(--brand)"></i></div><div><div class="ms-label">Completed transfers</div><div class="ms-value" id="ov-completed">0</div></div></div>
+        <div class="mini-stat"><div class="ms-ico"><i data-lucide="check-circle-2" style="width:17px;height:17px;color:var(--brand)"></i></div><div><div class="ms-label">Payments</div><div class="ms-value" id="ov-count">0</div></div></div>
         <div class="mini-stat"><div class="ms-ico"><i data-lucide="landmark" style="width:17px;height:17px;color:var(--brand)"></i></div><div><div class="ms-label">Banks supported</div><div class="ms-value" id="ov-banks">0</div></div></div>
       </div>
     </div>
-    <div class="mcard"><div class="mcard-head"><h2 class="mcard-title">Recent activity<span class="live-badge"><span class="live-dot"></span>Live</span></h2></div>
+    <div class="mcard"><div class="mcard-head"><h2 class="mcard-title">Recent payments<span class="live-badge"><span class="live-dot"></span>Live</span></h2></div>
       <div id="ov-activity"><div class="empty"><div class="spinner"></div></div></div></div>`;
   icons();
-  try {
-    const [banks, txData, bal] = await Promise.all([
+  try{
+    const [bal, pay, banks] = await Promise.all([
+      api('/api/merchant-api/balances/'+(MERCHANT_ID||DUMMY_ID)),
+      api('/api/merchant-api/payments?page=0&limit=8'),
       api('/api/banks'),
-      api(`/api/transactions?merchant_id=${MERCHANT_ID}&limit=10&offset=0`),
-      api(`/api/merchant-api/balances/${MERCHANT_ID}`).catch(() => ({ available: 0, pending: 0 })),
     ]);
-    document.getElementById('ov-banks').textContent = banks.banks.length;
-    document.getElementById('ov-balance').textContent = fmt(bal.available || 0);
-    document.getElementById('ov-pending-bal').textContent = fmt(bal.pending || 0);
-    const txns = txData.transactions || [];
-    document.getElementById('ov-completed').textContent = txns.filter(t => t.settled_at).length;
+    MERCHANT_ID = bal.merchant_id || MERCHANT_ID;
+    document.getElementById('ov-balance').textContent = fmt(bal.available);
+    document.getElementById('ov-pending').textContent = fmt(bal.pending);
+    document.getElementById('ov-banks').textContent = (banks.banks||[]).length;
+    const items = pay.payments || [];
+    document.getElementById('ov-count').textContent = items.length;
     const act = document.getElementById('ov-activity');
-    if (txns.length) {
-      act.innerHTML = `<div class="tbl-wrap"><table class="mtbl"><thead><tr><th>Amount</th><th>Rail</th><th>Reference</th><th>Settlement</th><th>Date</th></tr></thead><tbody>
-        ${txns.map(t => `<tr>
-          <td class="cell-amt">${fmt(t.amount_cents)}</td>
-          <td><span class="rail-tag">${(t.rail_used||'—').toUpperCase()}</span></td>
-          <td class="cell-id">${(t.reference||'').slice(0,14)}</td>
-          <td>${t.settled_at ? '<span class="mbadge tone-success">Settled</span>' : '<span class="mbadge tone-neutral">Open</span>'}</td>
-          <td class="cell-muted">${t.settled_at ? new Date(t.settled_at).toLocaleDateString() : '—'}</td>
-        </tr>`).join('')}</tbody></table></div>`;
-    } else {
-      act.innerHTML = `<div class="empty">No transactions yet. Create a session to get started.</div>`;
-    }
-  } catch(e) { document.getElementById('ov-activity').innerHTML = `<div class="mcard-body"><div class="flash error">${e.message}</div></div>`; }
+    act.innerHTML = items.length ? renderPaymentsTable(items) : `<div class="empty">No payments yet. Create a payment link to start collecting.</div>`;
+  }catch(e){ if(e.message!=='unauthorized') document.getElementById('ov-activity').innerHTML = `<div class="mcard-body"><div class="flash error">${e.message}</div></div>`; }
 }
 
-/* ==================== SESSIONS ==================== */
-async function loadSessions() {
-  const el = document.getElementById('section-sessions');
-  el.innerHTML = `<div class="mcard"><div class="mcard-head"><h2 class="mcard-title">Sessions ledger<span class="live-badge"><span class="live-dot"></span>Live</span></h2></div>
-    <div id="sessions-list"><div class="empty"><div class="spinner"></div></div></div></div>
-    <div id="session-detail"></div>`;
-  try {
-    const txData = await api(`/api/transactions?merchant_id=${MERCHANT_ID}&limit=100&offset=0`);
-    const txns = txData.transactions || [];
-    const sessionIds = [...new Set(txns.map(t => t.session_id).filter(Boolean))];
-    let sessions = [];
-    for (const sid of sessionIds.slice(0,20)) { try { sessions.push(await api('/api/sessions/' + sid)); } catch {} }
-    const list = document.getElementById('sessions-list');
-    if (!sessions.length) { list.innerHTML = '<div class="empty">No sessions found. Create one to start accepting payments.</div>'; return; }
-    list.innerHTML = `<div class="tbl-wrap"><table class="mtbl"><thead><tr><th>Session</th><th>Amount</th><th>Status</th><th>Rail</th><th>Created</th><th>Settlement</th></tr></thead><tbody>
-      ${sessions.map(s => { const txn = txns.find(t => t.session_id === s.id); return `<tr onclick="selectSession('${s.id}')" class="${selectedSessionId===s.id?'sel':''}">
-        <td class="cell-id">${s.id.slice(0,8)}…</td>
-        <td class="cell-amt">${fmt(s.amount_cents)}</td>
-        <td>${badge(s.status)}</td>
-        <td><span class="rail-tag">${(s.rail_used||'—').toUpperCase()}</span></td>
-        <td class="cell-muted">${new Date(s.created_at).toLocaleDateString()}</td>
-        <td>${txn ? '<span class="mbadge tone-success">Settled</span>' : '<span class="mbadge tone-neutral">Open</span>'}</td>
-      </tr>`; }).join('')}</tbody></table></div>`;
-    if (selectedSessionId) selectSession(selectedSessionId);
-  } catch(e) { document.getElementById('sessions-list').innerHTML = `<div class="mcard-body"><div class="flash error">${e.message}</div></div>`; }
+function renderPaymentsTable(items){
+  return `<div class="tbl-wrap"><table class="mtbl"><thead><tr><th>Payment</th><th>Amount</th><th>Status</th><th>Method</th><th>Provider</th><th>Date</th></tr></thead><tbody>
+    ${items.map(p=>`<tr>
+      <td class="cell-id">${String(p.id||'').slice(0,8)}…</td>
+      <td class="cell-amt">${fmt(p.amount)}</td>
+      <td>${badge(p.status)}</td>
+      <td><span class="rail-tag">${String(p.method||'—').toUpperCase()}</span></td>
+      <td class="cell-muted">${p.provider||'—'}</td>
+      <td class="cell-muted">${p.created_at?new Date(p.created_at).toLocaleDateString():'—'}</td>
+    </tr>`).join('')}</tbody></table></div>`;
 }
 
-async function selectSession(id) {
-  selectedSessionId = id;
-  document.querySelectorAll('#section-sessions .mtbl tbody tr').forEach(r => r.classList.remove('sel'));
-  document.querySelector(`#section-sessions .mtbl tbody tr[onclick*="${id}"]`)?.classList.add('sel');
-  const el = document.getElementById('session-detail');
-  el.innerHTML = '<div class="mcard"><div class="mcard-body"><div class="empty"><div class="spinner"></div></div></div></div>';
-  try {
-    const s = await api('/api/sessions/' + id);
-    const hasBank = s.customer_account_number && s.customer_account_number.length > 0;
-    const cp = (s.column_counterparty_id || '').split('|');
-    const btns = [];
-    if (s.status === 'pending') {
-      if (!hasBank) btns.push(`<button class="mbtn mbtn-secondary mbtn-sm" onclick="plaidForSession('${id}')"><i data-lucide="link" style="width:14px;height:14px"></i>Link bank</button>`);
-      else { btns.push(`<button class="mbtn mbtn-primary mbtn-sm" onclick="confirmSession('${id}')"><i data-lucide="check" style="width:14px;height:14px"></i>Confirm</button>`);
-              btns.push(`<button class="mbtn mbtn-secondary mbtn-sm" onclick="plaidForSession('${id}')">Change bank</button>`); }
-    }
-    if (s.status === 'authorized') btns.push(`<button class="mbtn mbtn-success mbtn-sm mbtn-pulse" onclick="initPayment('${id}')"><i data-lucide="zap" style="width:14px;height:14px"></i>Initiate transfer</button>`);
-    if (s.status === 'completed' || s.status === 'expired') btns.push(`<a class="mbtn mbtn-secondary mbtn-sm" href="/invoice/${id}" target="_blank"><i data-lucide="receipt" style="width:14px;height:14px"></i>Invoice</a>`);
-    btns.push(`<a class="mbtn mbtn-secondary mbtn-sm" href="/pay/${id}" target="_blank"><i data-lucide="external-link" style="width:14px;height:14px"></i>Pay page</a>`);
-
-    el.innerHTML = `<div class="mcard"><div class="mcard-head"><h2 class="mcard-title">Session ${s.id.slice(0,8)}…</h2><div style="display:flex;gap:8px;flex-wrap:wrap">${btns.join('')}</div></div>
-      <div class="mcard-body"><div id="detail-flash"></div><div class="detail">
-        <div><dl class="dgrid">
-          <dt>Status</dt><dd>${badge(s.status)}</dd>
-          <dt>Amount</dt><dd><span style="font-family:var(--font-serif);font-size:22px;font-weight:500">${fmt(s.amount_cents)}</span> <span class="cell-muted">${s.currency}</span></dd>
-          <dt>Rail</dt><dd><span class="rail-tag">${(s.rail_used||'—').toUpperCase()}</span></dd>
-          <dt>Bank</dt><dd>${s.bank_id}</dd>
-          ${s.customer_name?`<dt>Customer</dt><dd>${s.customer_name}${s.customer_email?' · '+s.customer_email:''}</dd>`:''}
-          ${hasBank?`<dt>Bank linked</dt><dd><span class="mbadge tone-success">Yes · ${s.customer_account_type||''}</span></dd>`:''}
-          ${s.note?`<dt>Note</dt><dd>${s.note}</dd>`:''}
-          ${cp[0]?`<dt>MT counterparty</dt><dd class="cell-id">${cp[0]}</dd>`:''}
-          ${cp[1]?`<dt>MT ext. account</dt><dd class="cell-id">${cp[1]}</dd>`:''}
-          ${s.column_ref?`<dt>MT payment order</dt><dd class="cell-id"><a href="https://app.moderntreasury.com/payment-orders/${s.column_ref}" target="_blank">${s.column_ref}</a></dd>`:''}
-          <dt>Created</dt><dd class="cell-muted">${new Date(s.created_at).toLocaleString()}</dd>
-          <dt>Expires</dt><dd class="cell-muted">${new Date(s.expires_at).toLocaleString()}</dd>
-        </dl></div>
-        <div style="text-align:center">
-          <div class="qr-well" id="qrcode-${id}"><div class="spinner"></div></div>
-          <div class="paylink">${window.location.origin}/pay/${id}</div>
-        </div>
-      </div></div></div>`;
-    icons();
-    fetch(API + '/api/sessions/' + id + '/qr').then(r=>r.text()).then(svg=>{const q=document.getElementById('qrcode-'+id);if(q)q.innerHTML=svg}).catch(()=>{});
-  } catch(e) { el.innerHTML = `<div class="mcard"><div class="mcard-body"><div class="flash error">${e.message}</div></div></div>`; }
+/* ---------- payments ---------- */
+async function loadPayments(){
+  const el = document.getElementById('section-payments');
+  el.innerHTML = `<div class="mcard"><div class="mcard-head"><h2 class="mcard-title">Payments<span class="live-badge"><span class="live-dot"></span>Live</span></h2></div>
+    <div id="pay-list"><div class="empty"><div class="spinner"></div></div></div></div>`;
+  try{
+    const data = await api('/api/merchant-api/payments?page=0&limit=100');
+    const items = data.payments || [];
+    document.getElementById('pay-list').innerHTML = items.length ? renderPaymentsTable(items) : `<div class="empty">No payments yet.</div>`;
+  }catch(e){ if(e.message!=='unauthorized') document.getElementById('pay-list').innerHTML = `<div class="mcard-body"><div class="flash error">${e.message}</div></div>`; }
 }
 
-function detailFlash(msg, type) {
-  const wrap = document.getElementById('detail-flash');
-  if (!wrap) return;
-  wrap.innerHTML = `<div class="flash ${type}">${msg}</div>`;
-  setTimeout(() => { if (wrap.firstChild) wrap.innerHTML=''; }, 6000);
-}
-
-async function confirmSession(id) {
-  try {
-    const s = await api('/api/sessions/' + id);
-    const name = s.customer_name || prompt('Customer name:') || 'Customer';
-    const addr = s.customer_address_line_1 || prompt('Street address:') || '123 Main St';
-    const city = s.customer_address_city || prompt('City:') || 'New York';
-    const state = s.customer_address_state || prompt('State:') || 'NY';
-    const zip = s.customer_address_postal_code || prompt('ZIP:') || '10001';
-    await api('/api/sessions/' + id + '/confirm', { method:'POST', body: JSON.stringify({ session_id:id, customer_name:name, customer_address_line_1:addr, customer_city:city, customer_state:state, customer_postal_code:zip, customer_country_code:'US' }) });
-    detailFlash('Confirmed — MT counterparty created.', 'success');
-    selectSession(id);
-  } catch(e) { detailFlash(e.message, 'error'); }
-}
-
-async function initPayment(id) {
-  try {
-    const d = await api('/api/sessions/' + id + '/initiate', { method:'POST' });
-    detailFlash('Transfer initiated — MT payment order created. ' + (d.transaction_id ? 'TXN ' + d.transaction_id.slice(0,8) : ''), 'success');
-    selectSession(id); loadOverview();
-  } catch(e) { detailFlash(e.message, 'error'); }
-}
-
-/* ==================== NEW SESSION ==================== */
-function renderCreate() {
+/* ---------- create payment link ---------- */
+function renderCreate(){
   const el = document.getElementById('section-create');
-  el.innerHTML = `<div class="mcard"><div class="mcard-head"><h2 class="mcard-title">New payment session</h2></div>
+  el.innerHTML = `<div class="mcard"><div class="mcard-head"><h2 class="mcard-title">New payment link</h2></div>
     <div class="mcard-body"><form id="createForm" style="max-width:520px">
       <div class="form-row">
-        <div class="field"><label>Bank</label><select id="c-bank"></select></div>
         <div class="field"><label>Amount (USD)</label><input id="c-amount" value="10.00" inputmode="decimal"></div>
-      </div>
-      <div class="form-row">
         <div class="field"><label>Currency</label><input id="c-currency" value="USD"></div>
-        <div class="field"><label>Note</label><input id="c-note" placeholder="Optional"></div>
       </div>
-      <div class="form-actions"><button class="mbtn mbtn-primary mbtn-md" type="submit"><i data-lucide="plus" style="width:15px;height:15px"></i>Create session</button></div>
+      <div class="field"><label>Description</label><input id="c-note" placeholder="Optional — shown to the customer"></div>
+      <div class="form-actions"><button class="mbtn mbtn-primary mbtn-md" type="submit"><i data-lucide="plus" style="width:15px;height:15px"></i>Create link</button></div>
     </form><div id="create-result"></div></div></div>`;
   icons();
-  api('/api/banks').then(data => {
-    const sel = document.getElementById('c-bank');
-    data.banks.forEach(b => { const o=document.createElement('option'); o.value=b.id; o.textContent=b.name+' ('+b.id+')'; sel.appendChild(o); });
-  });
-  document.getElementById('createForm').addEventListener('submit', async e => {
+  document.getElementById('createForm').addEventListener('submit', async e=>{
     e.preventDefault();
-    const btn = e.target.querySelector('button'); btn.disabled=true; btn.innerHTML='<span class="spinner" style="width:15px;height:15px;border-width:2px"></span> Creating…';
+    const btn=e.target.querySelector('button'); btn.disabled=true; btn.innerHTML='<span class="spinner" style="width:15px;height:15px;border-width:2px"></span> Creating…';
     const res = document.getElementById('create-result');
-    try {
+    try{
       const cents = Math.round(parseFloat(document.getElementById('c-amount').value) * 100);
-      const s = await api('/api/sessions', { method:'POST', body: JSON.stringify({ merchant_id:MERCHANT_ID, bank_id:document.getElementById('c-bank').value, amount_cents:cents, currency:document.getElementById('c-currency').value, note:document.getElementById('c-note').value || null }) });
-      res.innerHTML = `<div class="flash success" style="margin-top:16px">Session <strong style="font-family:var(--font-mono)">${s.id.slice(0,8)}…</strong> created · ${fmt(cents)}</div>
+      if(!cents || cents<1) throw new Error('Enter a valid amount.');
+      const out = await api('/api/merchant-api/payment_links', { method:'POST', body: JSON.stringify({
+        amount: cents,
+        currency: document.getElementById('c-currency').value || 'USD',
+        description: document.getElementById('c-note').value || null,
+        checkout_host: window.location.origin,
+      })});
+      const url = out.checkout_url || (window.location.origin + '/pay/' + out.id);
+      res.innerHTML = `<div class="flash success" style="margin-top:16px">Payment link created · ${fmt(cents)}</div>
         <div style="display:flex;gap:24px;align-items:flex-start;margin-top:12px;flex-wrap:wrap">
           <div class="qr-well" id="qrcode-new"><div class="spinner"></div></div>
-          <div><p style="font-size:13px;color:var(--ink-2)">Share this link with the customer:</p>
-          <p class="paylink" style="text-align:left">${window.location.origin}/pay/${s.id}</p>
+          <div><p style="font-size:13px;color:var(--ink-2)">Share this link with your customer:</p>
+          <p class="paylink" style="text-align:left">${url}</p>
           <div class="form-actions" style="margin-top:12px">
-            <a class="mbtn mbtn-secondary mbtn-sm" href="/pay/${s.id}" target="_blank"><i data-lucide="external-link" style="width:14px;height:14px"></i>Open pay page</a>
-            <button class="mbtn mbtn-secondary mbtn-sm" onclick="switchTab('sessions')">View sessions</button>
+            <a class="mbtn mbtn-secondary mbtn-sm" href="${url}" target="_blank"><i data-lucide="external-link" style="width:14px;height:14px"></i>Open checkout</a>
+            <button class="mbtn mbtn-secondary mbtn-sm" onclick="navigator.clipboard&&navigator.clipboard.writeText('${url}')"><i data-lucide="copy" style="width:14px;height:14px"></i>Copy link</button>
+            <button class="mbtn mbtn-secondary mbtn-sm" onclick="switchTab('payments')">View payments</button>
           </div></div>
         </div>`;
       icons();
-      fetch(API + '/api/sessions/' + s.id + '/qr').then(r=>r.text()).then(svg=>{const q=document.getElementById('qrcode-new');if(q)q.innerHTML=svg}).catch(()=>{});
-    } catch(e) { res.innerHTML = `<div class="flash error" style="margin-top:16px">${e.message}</div>`; }
-    btn.disabled=false; btn.innerHTML='<i data-lucide="plus" style="width:15px;height:15px"></i>Create session'; icons();
+      fetch('/api/sessions/'+out.id+'/qr').then(r=>r.text()).then(svg=>{const q=document.getElementById('qrcode-new');if(q)q.innerHTML=svg;}).catch(()=>{});
+    }catch(e){ if(e.message!=='unauthorized') res.innerHTML = `<div class="flash error" style="margin-top:16px">${e.message}</div>`; }
+    btn.disabled=false; btn.innerHTML='<i data-lucide="plus" style="width:15px;height:15px"></i>Create link'; icons();
   });
 }
 
-/* ==================== TRANSACTIONS ==================== */
-async function loadTransactions() {
-  const el = document.getElementById('section-transactions');
-  el.innerHTML = `<div class="mcard"><div class="mcard-head"><h2 class="mcard-title">Transactions</h2></div>
-    <div id="txn-list"><div class="empty"><div class="spinner"></div></div></div></div>`;
-  try {
-    const data = await api(`/api/transactions?merchant_id=${MERCHANT_ID}&limit=50&offset=0`);
-    const items = data.transactions || [];
-    const list = document.getElementById('txn-list');
-    if (!items.length) { list.innerHTML = '<div class="empty">No transactions yet.</div>'; return; }
-    list.innerHTML = `<div class="tbl-wrap"><table class="mtbl"><thead><tr><th>ID</th><th>Session</th><th>Amount</th><th>Rail</th><th>Reference</th><th>Settled</th></tr></thead><tbody>
-      ${items.map(t => `<tr>
-        <td class="cell-id">${t.id.slice(0,8)}…</td>
-        <td class="cell-id">${(t.session_id||'').slice(0,8)}…</td>
-        <td class="cell-amt">${fmt(t.amount_cents)}</td>
-        <td><span class="rail-tag">${(t.rail_used||'—').toUpperCase()}</span></td>
-        <td class="cell-id">${(t.reference||'').slice(0,16)}</td>
-        <td class="cell-muted">${t.settled_at ? new Date(t.settled_at).toLocaleString() : '—'}</td>
-      </tr>`).join('')}</tbody></table></div>`;
-  } catch(e) { document.getElementById('txn-list').innerHTML = `<div class="mcard-body"><div class="flash error">${e.message}</div></div>`; }
-}
-
-/* ==================== PLAID ==================== */
-function renderPlaid() {
-  const el = document.getElementById('section-plaid');
-  el.innerHTML = `<div class="mcard"><div class="mcard-head"><h2 class="mcard-title">Create link token</h2></div>
-    <div class="mcard-body" style="max-width:520px">
-      <div class="field"><label>Session ID</label><input id="plaid-session" placeholder="Session UUID" value="${selectedSessionId||''}"></div>
-      <button class="mbtn mbtn-primary mbtn-md" id="plaid-link-btn"><i data-lucide="link" style="width:15px;height:15px"></i>Create link token</button>
-      <div id="plaid-result" style="margin-top:12px"></div>
-    </div></div>
-    <div class="mcard"><div class="mcard-head"><h2 class="mcard-title">Exchange public token</h2></div>
-    <div class="mcard-body" style="max-width:520px"><form id="exchangeForm">
-      <div class="form-row">
-        <div class="field"><label>Session ID</label><input id="plaid-ex-session" placeholder="UUID" value="${selectedSessionId||''}"></div>
-        <div class="field"><label>Public token</label><input id="plaid-public" placeholder="From Plaid Link"></div>
-      </div>
-      <div class="form-actions"><button class="mbtn mbtn-primary mbtn-md" type="submit"><i data-lucide="arrow-left-right" style="width:15px;height:15px"></i>Exchange token</button></div>
-    </form><div id="exchange-result" style="margin-top:12px"></div></div></div>`;
+/* ---------- boot ---------- */
+function boot(){
+  document.getElementById('foot-name').textContent = MERCHANT_ID ? ('Merchant ' + String(MERCHANT_ID).slice(0,8)) : 'Merchant';
+  loadOverview();
   icons();
-  document.getElementById('plaid-link-btn').addEventListener('click', async () => {
-    const sid = document.getElementById('plaid-session').value;
-    const res = document.getElementById('plaid-result');
-    if (!sid) { res.innerHTML='<div class="flash error">Session ID required</div>'; return; }
-    try { const data = await api('/api/plaid/link-token?session_id=' + sid); res.innerHTML=`<div class="flash success">Link token created</div><pre>${JSON.stringify(data,null,2)}</pre>`; }
-    catch(e) { res.innerHTML=`<div class="flash error">${e.message}</div>`; }
-  });
-  document.getElementById('exchangeForm').addEventListener('submit', async e => {
-    e.preventDefault();
-    const res = document.getElementById('exchange-result');
-    const sid = document.getElementById('plaid-ex-session').value;
-    const token = document.getElementById('plaid-public').value;
-    if (!sid || !token) { res.innerHTML='<div class="flash error">Session ID and public token required</div>'; return; }
-    try { const data = await api('/api/plaid/exchange', { method:'POST', body: JSON.stringify({ session_id:sid, public_token:token }) }); res.innerHTML=`<div class="flash success">Token exchanged</div><pre>${JSON.stringify(data,null,2)}</pre>`; }
-    catch(e) { res.innerHTML=`<div class="flash error">${e.message}</div>`; }
-  });
 }
-function plaidForSession(id) { switchTab('plaid'); document.getElementById('plaid-session').value = id; document.getElementById('plaid-ex-session').value = id; }
-
-/* boot */
-loadOverview();
-renderCreate();
-renderPlaid();
-icons();
+if (API_KEY){
+  fetch('/api/merchant-api/balances/'+DUMMY_ID, { headers:{'x-api-key':API_KEY} })
+    .then(r=>{ if(!r.ok) throw new Error('bad key'); return r.json(); })
+    .then(b=>{ MERCHANT_ID=b.merchant_id; document.querySelector('.app').style.display=''; boot(); })
+    .catch(()=> renderGate());
+} else {
+  renderGate();
+}
 </script>
 </body>
 </html>
