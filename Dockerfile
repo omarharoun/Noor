@@ -20,6 +20,10 @@ COPY Cargo.toml Cargo.lock ./
 COPY crates/ crates/
 COPY src/ src/
 
+# sqlx::migrate!("./migrations") embeds the migration files at COMPILE time, so
+# the directory must exist in the build stage too — not only the runtime stage.
+COPY migrations/ migrations/
+
 # Copy the sqlx offline query cache so we can build without a live DB
 COPY .sqlx/ .sqlx/
 
