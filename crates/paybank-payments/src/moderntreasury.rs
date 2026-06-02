@@ -470,6 +470,53 @@ pub async fn get_invoice_status(invoice_id: &str) -> Result<String, AppError> {
     Ok(inv.status)
 }
 
+/// Send a payout: a payment_order (direction=credit) from the platform internal
+/// account to a payee's external account, over the chosen rail.
+pub async fn create_payout(
+    external_account_id: &str,
+    rail: &PaymentRail,
+    amount_cents: i64,
+    description: &str,
+    idempotency_key: &str,
+) -> Result<PaymentOrderResponse, AppError> {
+    let client = mt_client()?;
+    let originating = std::env::var("MT_INTERNAL_ACCOUNT_ID")
+        .map_err(|_| AppError::ModernTreasuryError("MT_INTERNAL_ACCOUNT_ID not set".into()))?;
+    let order_type = match rail {
+        PaymentRail::Ach => "ach",
+        PaymentRail::Wire => "wire",
+        PaymentRail::Rtp | PaymentRail::FedNow => "rtp",
+    };
+    let request = CreatePaymentOrderRequest {
+        order_type: order_type.to_string(),
+        amount: amount_cents,
+        direction: "credit".to_string(),
+        originating_account_id: originating,
+        receiving_account_id: external_account_id.to_string(),
+        receiving_account_type: "external_account".to_string(),
+        remittance_information: description.to_string(),
+        currency: "USD".to_string(),
+    };
+    let resp = client
+        .post(format!("{}/payment_orders", MT_BASE_URL))
+        .header("Idempotency-Key", idempotency_key)
+        .json(&request)
+        .send()
+        .await
+        .map_err(|e| AppError::ModernTreasuryError(e.to_string()))?;
+    if !resp.status().is_success() {
+        let st = resp.status();
+        let b = resp.text().await.unwrap_or_default();
+        return Err(AppError::ModernTreasuryError(format!(
+            "payout failed: HTTP {} - {}",
+            st, b
+        )));
+    }
+    resp.json()
+        .await
+        .map_err(|e| AppError::ModernTreasuryError(format!("parse payout: {}", e)))
+}
+
 pub async fn create_transfer(
     internal_account_id: &str,
     counterparty_id: &str,

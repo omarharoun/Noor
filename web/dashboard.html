@@ -150,8 +150,11 @@ pre{background:var(--cream-deep);border:1px solid var(--border);border-radius:va
     <button class="nav-item active" data-tab="overview"><i data-lucide="layout-dashboard"></i>Overview</button>
     <button class="nav-item" data-tab="payments"><i data-lucide="receipt"></i>Payments</button>
     <button class="nav-item" data-tab="invoices"><i data-lucide="file-text"></i>Invoices</button>
+    <button class="nav-item" data-tab="send"><i data-lucide="send"></i>Send money</button>
+    <button class="nav-item" data-tab="approvals" id="nav-approvals" style="display:none"><i data-lucide="check-square"></i>Approvals</button>
     <button class="nav-item" data-tab="create"><i data-lucide="plus-circle"></i>Payment link</button>
     <button class="nav-item" data-tab="bank"><i data-lucide="landmark"></i>Bank account</button>
+    <button class="nav-item" data-tab="team" id="nav-team" style="display:none"><i data-lucide="users"></i>Team</button>
     <div class="sidebar-foot">
       <div class="brand-divider"></div>
       <div class="foot-user"><span class="avatar" style="width:32px;height:32px;font-size:12px">M</span><div><div class="nm" id="foot-name">Merchant</div><div class="em">Business account</div></div></div>
@@ -169,29 +172,36 @@ pre{background:var(--cream-deep);border:1px solid var(--border);border-radius:va
       <div id="section-overview" class="section active"></div>
       <div id="section-payments" class="section"></div>
       <div id="section-invoices" class="section"></div>
+      <div id="section-send" class="section"></div>
+      <div id="section-approvals" class="section"></div>
       <div id="section-create" class="section"></div>
       <div id="section-bank" class="section"></div>
+      <div id="section-team" class="section"></div>
     </div>
   </div>
 </div>
 
 <script src="https://unpkg.com/lucide@0.456.0/dist/umd/lucide.min.js"></script>
 <script>
-/* Merchant dashboard — authenticates with a merchant API key (x-api-key) and
-   talks ONLY to the merchant-scoped /api/merchant-api/* endpoints plus the
-   public /api/banks and /api/sessions/:id/qr. Operator-only actions
-   (initiate transfer, list all sessions) live in the operator console. */
-const KEY_STORE = 'noor_merchant_key';
+/* Merchant dashboard — users sign in with email + password (merchant-user JWT)
+   and talk to the merchant-scoped /api/merchant-api/* endpoints. Roles
+   (owner/admin/member) gate user management, approvals, and self-approval. */
+const TOKEN_STORE = 'noor_merchant_token';
 const DUMMY_ID = '00000000-0000-0000-0000-000000000000';
-let API_KEY = localStorage.getItem(KEY_STORE) || '';
+let TOKEN = localStorage.getItem(TOKEN_STORE) || '';
 let MERCHANT_ID = null;
+let USER = null; // { id, email, name, role }
+const canApprove = () => USER && (USER.role === 'owner' || USER.role === 'admin');
 
 const TITLES = {
   overview: ['Overview', 'Your balance and recent payment activity.'],
   payments: ['Payments', 'Settled and in-flight payments on your account.'],
   invoices: ['Invoices', 'Send invoices and get paid by bank transfer.'],
+  send:     ['Send money', 'Pay a vendor or contractor from your balance.'],
+  approvals:['Approvals', 'Payouts awaiting a second approver.'],
   create:   ['Payment link', 'Create a hosted checkout link to collect a payment.'],
   bank:     ['Bank account', 'Your settlement bank account, verified securely.'],
+  team:     ['Team', 'People who can access this account, and their roles.'],
 };
 const fmt = (c) => '$' + ((c||0)/100).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
 const TONE = { settled:'success', completed:'success', processing:'info', pending:'warning', authorized:'neutral', failed:'danger', returned:'danger', reversed:'danger', expired:'danger' };
@@ -200,13 +210,13 @@ const icons = () => { if (window.lucide) lucide.createIcons({ attrs:{'stroke-wid
 
 /* ---------- auth ---------- */
 async function api(path, opts = {}) {
-  const res = await fetch(path, { headers: { 'Content-Type':'application/json', 'x-api-key': API_KEY, ...(opts.headers||{}) }, ...opts });
-  if (res.status === 401) { doLogout('Your API key was rejected — please sign in again.'); throw new Error('unauthorized'); }
+  const res = await fetch(path, { headers: { 'Content-Type':'application/json', 'Authorization':'Bearer '+TOKEN, ...(opts.headers||{}) }, ...opts });
+  if (res.status === 401) { doLogout('Your session expired — please sign in again.'); throw new Error('unauthorized'); }
   if (!res.ok) { const t = await res.text(); let m=t; try{const j=JSON.parse(t); m=j.error||j.message||t;}catch{} throw new Error(m); }
   const ct = res.headers.get('content-type') || '';
   return ct.includes('json') ? res.json() : res.text();
 }
-function doLogout(msg){ localStorage.removeItem(KEY_STORE); API_KEY=''; MERCHANT_ID=null; renderGate(msg); }
+function doLogout(msg){ localStorage.removeItem(TOKEN_STORE); TOKEN=''; MERCHANT_ID=null; USER=null; renderGate(msg); }
 function logout(){ doLogout(); }
 
 function renderGate(err){
@@ -216,29 +226,32 @@ function renderGate(err){
   g.style.cssText='position:fixed;inset:0;display:grid;place-items:center;background:var(--cream);z-index:100;padding:20px';
   g.innerHTML = `<div style="width:100%;max-width:390px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);box-shadow:var(--shadow-md);padding:30px">
     <div style="display:flex;align-items:center;gap:10px"><span class="brand-glyph" style="width:30px;height:30px"><svg viewBox="0 0 34 34" style="position:absolute;inset:0"><path d="M23 9.5a9 9 0 1 0 0 15 7 7 0 1 1 0-15Z" fill="var(--cream)"/></svg></span><div class="brand-name" style="font-size:17px">Noor</div></div>
-    <h2 style="font-family:var(--font-serif);font-weight:500;font-size:22px;margin:16px 0 4px">Merchant sign in</h2>
-    <p style="color:var(--ink-3);font-size:13px;margin-bottom:18px">Enter your merchant API key to access your dashboard.</p>
+    <h2 style="font-family:var(--font-serif);font-weight:500;font-size:22px;margin:16px 0 4px">Sign in</h2>
+    <p style="color:var(--ink-3);font-size:13px;margin-bottom:18px">Sign in to your Noor business account.</p>
     ${err?`<div class="flash error">${err}</div>`:''}
-    <form id="gateForm"><div class="field"><label>API key</label><input id="gate-key" type="password" placeholder="pb_live_…" autocomplete="off"></div>
+    <form id="gateForm">
+      <div class="field"><label>Email</label><input id="gate-email" type="email" autocomplete="username" placeholder="you@company.com"></div>
+      <div class="field"><label>Password</label><input id="gate-pass" type="password" autocomplete="current-password" placeholder="••••••••"></div>
       <button class="mbtn mbtn-primary mbtn-md" type="submit" style="width:100%;justify-content:center">Sign in</button></form>
     <div id="gate-err" style="margin-top:12px"></div></div>`;
   icons();
   document.getElementById('gateForm').addEventListener('submit', async e=>{
     e.preventDefault();
-    const key = document.getElementById('gate-key').value.trim();
-    if(!key) return;
+    const email = document.getElementById('gate-email').value.trim();
+    const pass = document.getElementById('gate-pass').value;
+    if(!email||!pass) return;
     const btn=e.target.querySelector('button'); btn.disabled=true; btn.textContent='Signing in…';
     try{
-      const res = await fetch('/api/merchant-api/balances/'+DUMMY_ID, { headers:{'x-api-key':key} });
-      if(!res.ok) throw new Error('Invalid API key');
-      const bal = await res.json();
-      API_KEY = key; MERCHANT_ID = bal.merchant_id; localStorage.setItem(KEY_STORE, key);
+      const res = await fetch('/api/merchant/login', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({email,password:pass}) });
+      if(!res.ok) throw new Error('Invalid email or password');
+      const data = await res.json();
+      TOKEN = data.token; USER = data.user; localStorage.setItem(TOKEN_STORE, TOKEN);
       const g2=document.getElementById('gate'); if(g2) g2.remove();
       document.querySelector('.app').style.display='';
-      boot();
+      await boot();
     }catch(err){ document.getElementById('gate-err').innerHTML = `<div class="flash error">${err.message}</div>`; btn.disabled=false; btn.textContent='Sign in'; }
   });
-  setTimeout(()=>document.getElementById('gate-key')?.focus(), 60);
+  setTimeout(()=>document.getElementById('gate-email')?.focus(), 60);
 }
 
 /* ---------- nav ---------- */
@@ -252,8 +265,11 @@ document.querySelectorAll('.nav-item').forEach(a => a.addEventListener('click', 
   if(tab==='overview') loadOverview();
   if(tab==='payments') loadPayments();
   if(tab==='invoices') loadInvoices();
+  if(tab==='send') loadSend();
+  if(tab==='approvals') loadApprovals();
   if(tab==='create') renderCreate();
   if(tab==='bank') loadBank();
+  if(tab==='team') loadTeam();
 }));
 function switchTab(name){ document.querySelector(`.nav-item[data-tab="${name}"]`)?.click(); }
 
@@ -492,16 +508,138 @@ function renderBankForm(){
   });
 }
 
+/* ---------- send money ---------- */
+const RAILS = ['ach','wire','rtp','fednow'];
+async function loadSend(){
+  const el = document.getElementById('section-send');
+  el.innerHTML = `<div class="mcard"><div class="mcard-head"><h2 class="mcard-title">Send a payment</h2></div>
+    <div class="mcard-body"><form id="sendForm" style="max-width:560px">
+      <div class="field"><label>Payee name</label><input id="p-name" placeholder="Vendor LLC"></div>
+      <div class="form-row">
+        <div class="field"><label>Routing number</label><input id="p-routing" inputmode="numeric" placeholder="021000021"></div>
+        <div class="field"><label>Account number</label><input id="p-account" inputmode="numeric" placeholder="123456789"></div>
+      </div>
+      <div class="form-row">
+        <div class="field"><label>Account type</label><select id="p-type"><option value="checking">Checking</option><option value="savings">Savings</option></select></div>
+        <div class="field"><label>Rail</label><select id="p-rail">${RAILS.map(r=>`<option value="${r}">${r.toUpperCase()}</option>`).join('')}</select></div>
+      </div>
+      <div class="form-row">
+        <div class="field"><label>Amount (USD)</label><input id="p-amount" value="10.00" inputmode="decimal"></div>
+        <div class="field"><label>Memo</label><input id="p-memo" placeholder="Optional"></div>
+      </div>
+      <div class="flash info">${canApprove() && USER.role==='owner' ? 'As an owner, your payouts send immediately.' : 'Payouts require approval by an admin or owner before they send.'}</div>
+      <div class="form-actions"><button class="mbtn mbtn-primary mbtn-md" type="submit"><i data-lucide="send" style="width:15px;height:15px"></i>Send payment</button></div>
+    </form><div id="send-result"></div></div></div>`;
+  icons();
+  document.getElementById('sendForm').addEventListener('submit', async e=>{
+    e.preventDefault();
+    const btn=e.target.querySelector('button'); btn.disabled=true; btn.innerHTML='<span class="spinner" style="width:15px;height:15px;border-width:2px"></span> Sending…';
+    const res=document.getElementById('send-result');
+    try{
+      const cents=Math.round(parseFloat(document.getElementById('p-amount').value)*100);
+      if(!cents||cents<1) throw new Error('Enter a valid amount.');
+      const out=await api('/api/merchant-api/payouts',{method:'POST',body:JSON.stringify({
+        payee_name:document.getElementById('p-name').value.trim(),
+        account_type:document.getElementById('p-type').value,
+        routing_number:document.getElementById('p-routing').value.trim(),
+        account_number:document.getElementById('p-account').value.trim(),
+        rail:document.getElementById('p-rail').value,
+        amount:cents,
+        description:document.getElementById('p-memo').value||null,
+      })});
+      res.innerHTML = out.needs_approval
+        ? `<div class="flash info" style="margin-top:14px">Payout of ${fmt(out.amount)} created and sent for approval.</div>`
+        : `<div class="flash success" style="margin-top:14px">Payout of ${fmt(out.amount)} sent (${out.status}).</div>`;
+    }catch(e){ if(e.message!=='unauthorized') res.innerHTML=`<div class="flash error" style="margin-top:14px">${e.message}</div>`; }
+    btn.disabled=false; btn.innerHTML='<i data-lucide="send" style="width:15px;height:15px"></i>Send payment'; icons();
+  });
+}
+
+/* ---------- approvals ---------- */
+const PO_TONE = { pending_approval:'warning', processing:'info', completed:'success', approved:'info', failed:'danger', returned:'danger', rejected:'neutral' };
+function poBadge(s){ return `<span class="mbadge tone-${PO_TONE[s]||'neutral'}"><span class="mbadge-dot"></span>${s||'—'}</span>`; }
+async function loadApprovals(){
+  const el=document.getElementById('section-approvals');
+  el.innerHTML=`<div class="mcard"><div class="mcard-head"><h2 class="mcard-title">Pending approvals</h2></div><div id="appr-list"><div class="empty"><div class="spinner"></div></div></div></div>`;
+  try{
+    const data=await api('/api/merchant-api/payouts');
+    const pend=(data.payouts||[]).filter(p=>p.status==='pending_approval');
+    const list=document.getElementById('appr-list');
+    if(!pend.length){ list.innerHTML=`<div class="empty">No payouts awaiting approval.</div>`; return; }
+    list.innerHTML=`<div class="tbl-wrap"><table class="mtbl"><thead><tr><th>Payee</th><th>Amount</th><th>Rail</th><th>Requested</th><th></th></tr></thead><tbody>
+      ${pend.map(p=>`<tr>
+        <td>${p.payee_name} <span class="cell-muted">••${p.payee_last4||''}</span></td>
+        <td class="cell-amt">${fmt(p.amount)}</td>
+        <td><span class="rail-tag">${(p.rail||'ach').toUpperCase()}</span></td>
+        <td class="cell-muted">${p.created_at?new Date(p.created_at).toLocaleString():'—'}</td>
+        <td style="display:flex;gap:6px"><button class="mbtn mbtn-success mbtn-sm" onclick="decide('${p.id}','approve')">Approve</button>
+            <button class="mbtn mbtn-secondary mbtn-sm" onclick="decide('${p.id}','reject')">Reject</button></td>
+      </tr>`).join('')}</tbody></table></div><div id="appr-flash"></div>`;
+    icons();
+  }catch(e){ if(e.message!=='unauthorized') document.getElementById('appr-list').innerHTML=`<div class="mcard-body"><div class="flash error">${e.message}</div></div>`; }
+}
+async function decide(id, action){
+  try{ await api(`/api/merchant-api/payouts/${id}/${action}`,{method:'POST'}); loadApprovals(); }
+  catch(e){ if(e.message!=='unauthorized'){ const f=document.getElementById('appr-flash'); if(f) f.innerHTML=`<div class="flash error" style="margin-top:12px">${e.message}</div>`; } }
+}
+
+/* ---------- team ---------- */
+async function loadTeam(){
+  const el=document.getElementById('section-team');
+  el.innerHTML=`<div class="mcard"><div class="mcard-head"><h2 class="mcard-title">Team</h2>
+      <button class="mbtn mbtn-primary mbtn-sm" onclick="renderInvite()"><i data-lucide="user-plus" style="width:14px;height:14px"></i>Invite user</button></div>
+    <div id="team-list"><div class="empty"><div class="spinner"></div></div></div></div><div id="team-form"></div>`;
+  icons();
+  try{
+    const data=await api('/api/merchant-api/users');
+    const users=data.users||[];
+    document.getElementById('team-list').innerHTML=`<div class="tbl-wrap"><table class="mtbl"><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th></tr></thead><tbody>
+      ${users.map(u=>`<tr><td>${u.name}</td><td class="cell-muted">${u.email}</td><td><span class="rail-tag">${u.role}</span></td><td>${u.is_active?'<span class="mbadge tone-success">Active</span>':'<span class="mbadge tone-neutral">Disabled</span>'}</td></tr>`).join('')}</tbody></table></div>`;
+  }catch(e){ if(e.message!=='unauthorized') document.getElementById('team-list').innerHTML=`<div class="mcard-body"><div class="flash error">${e.message}</div></div>`; }
+}
+function renderInvite(){
+  const el=document.getElementById('team-form');
+  const roles = USER.role==='owner' ? ['member','admin','owner'] : ['member','admin'];
+  el.innerHTML=`<div class="mcard"><div class="mcard-head"><h2 class="mcard-title">Invite a user</h2></div>
+    <div class="mcard-body"><form id="inviteForm" style="max-width:520px">
+      <div class="form-row"><div class="field"><label>Name</label><input id="u-name" placeholder="Jane"></div>
+        <div class="field"><label>Email</label><input id="u-email" type="email" placeholder="jane@company.com"></div></div>
+      <div class="form-row"><div class="field"><label>Temporary password</label><input id="u-pass" type="text" placeholder="8+ characters"></div>
+        <div class="field"><label>Role</label><select id="u-role">${roles.map(r=>`<option value="${r}">${r}</option>`).join('')}</select></div></div>
+      <div class="form-actions"><button class="mbtn mbtn-primary mbtn-md" type="submit">Create user</button></div>
+    </form><div id="invite-result"></div></div></div>`;
+  icons();
+  document.getElementById('inviteForm').addEventListener('submit', async e=>{
+    e.preventDefault();
+    const res=document.getElementById('invite-result');
+    try{
+      await api('/api/merchant-api/users',{method:'POST',body:JSON.stringify({
+        name:document.getElementById('u-name').value.trim(),
+        email:document.getElementById('u-email').value.trim(),
+        password:document.getElementById('u-pass').value,
+        role:document.getElementById('u-role').value,
+      })});
+      document.getElementById('team-form').innerHTML=''; loadTeam();
+    }catch(e){ if(e.message!=='unauthorized') res.innerHTML=`<div class="flash error" style="margin-top:12px">${e.message}</div>`; }
+  });
+}
+
 /* ---------- boot ---------- */
-function boot(){
-  document.getElementById('foot-name').textContent = MERCHANT_ID ? ('Merchant ' + String(MERCHANT_ID).slice(0,8)) : 'Merchant';
+async function boot(){
+  document.getElementById('foot-name').textContent = USER ? USER.name : 'Merchant';
+  const fe = document.querySelector('.foot-user .em'); if(fe && USER) fe.textContent = USER.role;
+  // Role-gated tabs.
+  document.getElementById('nav-approvals').style.display = canApprove() ? '' : 'none';
+  document.getElementById('nav-team').style.display = canApprove() ? '' : 'none';
+  // Resolve merchant id (the balances endpoint echoes it).
+  try{ const b = await api('/api/merchant-api/balances/'+DUMMY_ID); MERCHANT_ID = b.merchant_id; }catch(_){}
   loadOverview();
   icons();
 }
-if (API_KEY){
-  fetch('/api/merchant-api/balances/'+DUMMY_ID, { headers:{'x-api-key':API_KEY} })
-    .then(r=>{ if(!r.ok) throw new Error('bad key'); return r.json(); })
-    .then(b=>{ MERCHANT_ID=b.merchant_id; document.querySelector('.app').style.display=''; boot(); })
+if (TOKEN){
+  fetch('/api/merchant/me', { headers:{'Authorization':'Bearer '+TOKEN} })
+    .then(r=>{ if(!r.ok) throw new Error('expired'); return r.json(); })
+    .then(u=>{ USER=u; document.querySelector('.app').style.display=''; boot(); })
     .catch(()=> renderGate());
 } else {
   renderGate();

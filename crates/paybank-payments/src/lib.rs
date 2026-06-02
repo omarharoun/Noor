@@ -122,6 +122,44 @@ pub async fn invoice_status(invoice_id: &str) -> Result<String, AppError> {
     moderntreasury::get_invoice_status(invoice_id).await
 }
 
+/// Onboard a payout recipient (counterparty + external account). Returns
+/// (counterparty_id, external_account_id). No prenote — we're sending TO them.
+pub async fn onboard_payee(
+    name: &str,
+    account_type: &str,
+    routing_number: &str,
+    account_number: &str,
+) -> Result<(String, String), AppError> {
+    moderntreasury::create_merchant_bank_account(
+        name,
+        name,
+        account_type,
+        routing_number,
+        account_number,
+    )
+    .await
+}
+
+/// Send a payout to a payee's external account over the chosen rail. Returns
+/// (mt_payment_order_id, status).
+pub async fn send_payout(
+    external_account_id: &str,
+    rail: &PaymentRail,
+    amount_cents: i64,
+    description: &str,
+    idempotency_key: &str,
+) -> Result<(String, String), AppError> {
+    let po = moderntreasury::create_payout(
+        external_account_id,
+        rail,
+        amount_cents,
+        description,
+        idempotency_key,
+    )
+    .await?;
+    Ok((po.id, po.status))
+}
+
 pub async fn initiate_transfer(
     session_id: uuid::Uuid,
     counterparty_id: &str,

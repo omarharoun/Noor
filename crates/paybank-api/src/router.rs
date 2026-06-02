@@ -196,6 +196,18 @@ pub fn build_router(state: AppState) -> Router {
             "/api/merchant-api/users",
             get(routes::merchant_api::list_users).post(routes::merchant_api::invite_user),
         )
+        .route(
+            "/api/merchant-api/payouts",
+            get(routes::merchant_api::list_payouts).post(routes::merchant_api::create_payout),
+        )
+        .route(
+            "/api/merchant-api/payouts/:id/approve",
+            post(routes::merchant_api::approve_payout),
+        )
+        .route(
+            "/api/merchant-api/payouts/:id/reject",
+            post(routes::merchant_api::reject_payout),
+        )
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             auth::merchant_auth,

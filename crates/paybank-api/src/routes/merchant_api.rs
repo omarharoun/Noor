@@ -109,6 +109,301 @@ pub struct CreatePaymentLinkResponse {
     pub id: Uuid,
 }
 
+// ── Payouts (Phase 3b): send money with dual-control approval ───────────────
+fn map_rail(s: &str) -> PaymentRail {
+    match s.to_lowercase().as_str() {
+        "wire" => PaymentRail::Wire,
+        "rtp" => PaymentRail::Rtp,
+        "fednow" => PaymentRail::FedNow,
+        _ => PaymentRail::Ach,
+    }
+}
+
+/// Spendable = ledger balance minus funds held by payouts still awaiting
+/// approval (those haven't posted a ledger debit yet).
+async fn merchant_spendable(pool: &sqlx::PgPool, merchant_id: Uuid) -> Result<i64, AppError> {
+    let avail = paybank_db::ledger_repo::LedgerRepo::merchant_available_cents(pool, merchant_id)
+        .await
+        .map_err(|e| AppError::Internal(e.into()))?;
+    let held: i64 = sqlx::query_scalar(
+        "SELECT COALESCE(SUM(amount_cents),0)::int8 FROM payouts \
+         WHERE merchant_id = $1 AND status = 'pending_approval'",
+    )
+    .bind(merchant_id)
+    .fetch_one(pool)
+    .await?;
+    Ok(avail - held)
+}
+
+/// Execute an approved payout: claim it (CAS), debit the ledger, send via the
+/// rails. Reverses the ledger debit if the provider call fails.
+async fn execute_payout(
+    pool: &sqlx::PgPool,
+    payout_id: Uuid,
+    approver_id: Uuid,
+) -> Result<String, AppError> {
+    // CAS-claim so a payout executes exactly once.
+    let row = sqlx::query(
+        "UPDATE payouts SET status='processing', approved_by=$2, updated_at=NOW() \
+         WHERE id=$1 AND status IN ('pending_approval','approved') \
+         RETURNING merchant_id, payee_external_account_id, amount_cents, rail, description",
+    )
+    .bind(payout_id)
+    .bind(approver_id)
+    .fetch_optional(pool)
+    .await?
+    .ok_or_else(|| AppError::BadRequest("payout is not in an approvable state".into()))?;
+
+    let merchant_id: Uuid = row.try_get("merchant_id")?;
+    let ext: Option<String> = row.try_get("payee_external_account_id").ok().flatten();
+    let amount: i64 = row.try_get("amount_cents")?;
+    let rail: String = row.try_get("rail").unwrap_or_else(|_| "ach".into());
+    let desc: Option<String> = row.try_get("description").ok().flatten();
+    let ext =
+        ext.ok_or_else(|| AppError::Internal(anyhow::anyhow!("payout missing payee account")))?;
+
+    // Re-check the ledger balance at execution time (it may have moved).
+    let avail = paybank_db::ledger_repo::LedgerRepo::merchant_available_cents(pool, merchant_id)
+        .await
+        .map_err(|e| AppError::Internal(e.into()))?;
+    if amount > avail {
+        let _ = sqlx::query(
+            "UPDATE payouts SET status='pending_approval', updated_at=NOW() WHERE id=$1",
+        )
+        .bind(payout_id)
+        .execute(pool)
+        .await;
+        return Err(AppError::BadRequest(
+            "insufficient balance to execute this payout".into(),
+        ));
+    }
+
+    // Debit the ledger first, then send. Reverse the debit if the send fails.
+    paybank_db::ledger_repo::LedgerRepo::record_payout(pool, merchant_id, payout_id, amount)
+        .await?;
+
+    let idem = format!("noor-payout-{}", payout_id);
+    match paybank_payments::send_payout(
+        &ext,
+        &map_rail(&rail),
+        amount,
+        desc.as_deref().unwrap_or("Payout"),
+        &idem,
+    )
+    .await
+    {
+        Ok((mt_id, _mt_status)) => {
+            let _ = sqlx::query(
+                "UPDATE payouts SET mt_payment_order_id=$1, status='processing', updated_at=NOW() WHERE id=$2",
+            )
+            .bind(&mt_id)
+            .bind(payout_id)
+            .execute(pool)
+            .await;
+            Ok("processing".into())
+        }
+        Err(e) => {
+            // Roll back the ledger debit and mark failed.
+            let _ = paybank_db::ledger_repo::LedgerRepo::record_payout_reversal(
+                pool,
+                merchant_id,
+                payout_id,
+                amount,
+            )
+            .await;
+            let _ = sqlx::query("UPDATE payouts SET status='failed', updated_at=NOW() WHERE id=$1")
+                .bind(payout_id)
+                .execute(pool)
+                .await;
+            Err(e)
+        }
+    }
+}
+
+#[derive(Deserialize)]
+pub struct CreatePayoutRequest {
+    pub payee_name: String,
+    pub account_type: String,
+    pub routing_number: String,
+    pub account_number: String,
+    pub amount: i64,
+    pub rail: Option<String>,
+    pub description: Option<String>,
+}
+
+pub async fn create_payout(
+    State(state): State<AppState>,
+    actor: crate::auth::AuthedMerchantUser,
+    Json(req): Json<CreatePayoutRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let payee = req.payee_name.trim();
+    let routing = req.routing_number.trim();
+    let account = req.account_number.trim();
+    let acct_type = req.account_type.trim().to_lowercase();
+    if payee.is_empty() {
+        return Err(AppError::BadRequest("payee name is required".into()));
+    }
+    if routing.len() != 9 || !routing.chars().all(|c| c.is_ascii_digit()) {
+        return Err(AppError::BadRequest(
+            "routing number must be 9 digits".into(),
+        ));
+    }
+    if account.len() < 4 || account.len() > 17 || !account.chars().all(|c| c.is_ascii_digit()) {
+        return Err(AppError::BadRequest(
+            "account number must be 4–17 digits".into(),
+        ));
+    }
+    if acct_type != "checking" && acct_type != "savings" {
+        return Err(AppError::BadRequest(
+            "account type must be checking or savings".into(),
+        ));
+    }
+    if req.amount < 1 {
+        return Err(AppError::BadRequest("amount must be positive".into()));
+    }
+
+    let spendable = merchant_spendable(&state.db.pool, actor.merchant_id).await?;
+    if req.amount > spendable {
+        return Err(AppError::BadRequest(format!(
+            "amount exceeds available balance (${:.2})",
+            spendable as f64 / 100.0
+        )));
+    }
+
+    let (cp_id, ext_id) =
+        paybank_payments::onboard_payee(payee, &acct_type, routing, account).await?;
+    let last4 = account[account.len() - 4..].to_string();
+    let rail = req
+        .rail
+        .clone()
+        .unwrap_or_else(|| "ach".into())
+        .to_lowercase();
+    let owner_initiated = actor.role == "owner";
+    let id = Uuid::new_v4();
+
+    sqlx::query(
+        "INSERT INTO payouts (id, merchant_id, payee_name, payee_counterparty_id, \
+         payee_external_account_id, payee_last4, amount_cents, currency, rail, description, \
+         status, initiated_by) VALUES ($1,$2,$3,$4,$5,$6,$7,'USD',$8,$9,'pending_approval',$10)",
+    )
+    .bind(id)
+    .bind(actor.merchant_id)
+    .bind(payee)
+    .bind(&cp_id)
+    .bind(&ext_id)
+    .bind(&last4)
+    .bind(req.amount)
+    .bind(&rail)
+    .bind(&req.description)
+    .bind(actor.user_id)
+    .execute(&state.db.pool)
+    .await?;
+
+    // Owner self-approves: execute immediately. Otherwise it waits for approval.
+    let status = if owner_initiated {
+        execute_payout(&state.db.pool, id, actor.user_id).await?
+    } else {
+        "pending_approval".into()
+    };
+
+    Ok(Json(serde_json::json!({
+        "id": id,
+        "status": status,
+        "amount": req.amount,
+        "payee_last4": last4,
+        "needs_approval": !owner_initiated,
+    })))
+}
+
+pub async fn list_payouts(
+    State(state): State<AppState>,
+    Extension(AuthedMerchant(merchant_id)): Extension<AuthedMerchant>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let rows = sqlx::query(
+        "SELECT id, payee_name, payee_last4, amount_cents, currency, rail, status, \
+         created_at FROM payouts WHERE merchant_id = $1 ORDER BY created_at DESC LIMIT 100",
+    )
+    .bind(merchant_id)
+    .fetch_all(&state.db.pool)
+    .await?;
+    let payouts: Vec<serde_json::Value> = rows
+        .iter()
+        .map(|r| {
+            serde_json::json!({
+                "id": r.try_get::<Uuid,_>("id").ok(),
+                "payee_name": r.try_get::<String,_>("payee_name").unwrap_or_default(),
+                "payee_last4": r.try_get::<Option<String>,_>("payee_last4").ok().flatten(),
+                "amount": r.try_get::<i64,_>("amount_cents").unwrap_or(0),
+                "rail": r.try_get::<String,_>("rail").unwrap_or_default(),
+                "status": r.try_get::<String,_>("status").unwrap_or_default(),
+                "created_at": r.try_get::<chrono::DateTime<chrono::Utc>,_>("created_at").ok(),
+            })
+        })
+        .collect();
+    Ok(Json(serde_json::json!({ "payouts": payouts })))
+}
+
+pub async fn approve_payout(
+    State(state): State<AppState>,
+    actor: crate::auth::AuthedMerchantUser,
+    Path(id): Path<Uuid>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    if !actor.can_approve() {
+        return Err(AppError::Forbidden(
+            "requires admin or owner to approve".into(),
+        ));
+    }
+    // Maker ≠ checker: the approver must not be the initiator.
+    let row =
+        sqlx::query("SELECT initiated_by, status FROM payouts WHERE id=$1 AND merchant_id=$2")
+            .bind(id)
+            .bind(actor.merchant_id)
+            .fetch_optional(&state.db.pool)
+            .await?
+            .ok_or(AppError::PaymentNotFound)?;
+    let initiated_by: Uuid = row.try_get("initiated_by")?;
+    let status: String = row.try_get("status").unwrap_or_default();
+    if status != "pending_approval" {
+        return Err(AppError::BadRequest(
+            "payout is not pending approval".into(),
+        ));
+    }
+    if initiated_by == actor.user_id {
+        return Err(AppError::Forbidden(
+            "the approver must be different from the initiator".into(),
+        ));
+    }
+    let new_status = execute_payout(&state.db.pool, id, actor.user_id).await?;
+    Ok(Json(serde_json::json!({ "id": id, "status": new_status })))
+}
+
+pub async fn reject_payout(
+    State(state): State<AppState>,
+    actor: crate::auth::AuthedMerchantUser,
+    Path(id): Path<Uuid>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    if !actor.can_approve() {
+        return Err(AppError::Forbidden(
+            "requires admin or owner to reject".into(),
+        ));
+    }
+    let updated = sqlx::query(
+        "UPDATE payouts SET status='rejected', approved_by=$3, updated_at=NOW() \
+         WHERE id=$1 AND merchant_id=$2 AND status='pending_approval'",
+    )
+    .bind(id)
+    .bind(actor.merchant_id)
+    .bind(actor.user_id)
+    .execute(&state.db.pool)
+    .await?;
+    if updated.rows_affected() == 0 {
+        return Err(AppError::BadRequest(
+            "payout is not pending approval".into(),
+        ));
+    }
+    Ok(Json(serde_json::json!({ "id": id, "status": "rejected" })))
+}
+
 // ── Merchant users (Phase 3a): list + invite, role-gated ───────────────────
 #[derive(Deserialize)]
 pub struct InviteUserRequest {

@@ -212,6 +212,75 @@ impl LedgerRepo {
         Ok(())
     }
 
+    /// Record an outbound payout: debit Settlement (reduce what we owe the
+    /// merchant — they're spending their balance), credit Cash (funds leave).
+    /// Lowers the merchant's available balance by `amount_cents`. Callers MUST
+    /// guard this behind a payout-status CAS so an approved payout posts once.
+    pub async fn record_payout(
+        pool: &PgPool,
+        merchant_id: Uuid,
+        payout_id: Uuid,
+        amount_cents: i64,
+    ) -> Result<(), sqlx::Error> {
+        Self::ensure_merchant_accounts(pool, merchant_id).await?;
+        let cash = Self::get_account(pool, "Cash", merchant_id).await?;
+        let settlement = Self::get_account(pool, "Settlement", merchant_id).await?;
+
+        let mut tx = pool.begin().await?;
+        let entry = Self::create_journal_entry(
+            &mut tx,
+            None,
+            &format!("Payout {}", payout_id),
+            Some("payout"),
+        )
+        .await?;
+        Self::create_posting(&mut tx, entry.id, settlement.id, amount_cents, "debit").await?;
+        Self::create_posting(&mut tx, entry.id, cash.id, amount_cents, "credit").await?;
+
+        if !Self::verify_balance(&mut *tx, entry.id).await? {
+            tx.rollback().await?;
+            return Err(sqlx::Error::Protocol(
+                "payout entry does not balance; refusing to post".into(),
+            ));
+        }
+        tx.commit().await?;
+        Ok(())
+    }
+
+    /// Reverse a payout's ledger debit (credit Settlement back, debit Cash) —
+    /// used when the provider call fails after we posted the debit, or on a
+    /// returned payout. Restores the merchant's available balance.
+    pub async fn record_payout_reversal(
+        pool: &PgPool,
+        merchant_id: Uuid,
+        payout_id: Uuid,
+        amount_cents: i64,
+    ) -> Result<(), sqlx::Error> {
+        Self::ensure_merchant_accounts(pool, merchant_id).await?;
+        let cash = Self::get_account(pool, "Cash", merchant_id).await?;
+        let settlement = Self::get_account(pool, "Settlement", merchant_id).await?;
+
+        let mut tx = pool.begin().await?;
+        let entry = Self::create_journal_entry(
+            &mut tx,
+            None,
+            &format!("Payout reversal {}", payout_id),
+            Some("payout_reversal"),
+        )
+        .await?;
+        Self::create_posting(&mut tx, entry.id, settlement.id, amount_cents, "credit").await?;
+        Self::create_posting(&mut tx, entry.id, cash.id, amount_cents, "debit").await?;
+
+        if !Self::verify_balance(&mut *tx, entry.id).await? {
+            tx.rollback().await?;
+            return Err(sqlx::Error::Protocol(
+                "payout reversal does not balance; refusing to post".into(),
+            ));
+        }
+        tx.commit().await?;
+        Ok(())
+    }
+
     /// A merchant's available balance = net credit on their liability
     /// (Settlement) account — what Noor owes them and can pay out.
     pub async fn merchant_available_cents(
