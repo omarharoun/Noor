@@ -2,6 +2,7 @@ pub mod auth;
 pub mod compliance;
 pub mod idempotency;
 pub mod reconcile;
+pub mod recurring;
 pub mod router;
 pub mod routes;
 pub mod secrets;

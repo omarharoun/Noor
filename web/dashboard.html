@@ -393,16 +393,17 @@ const INV_TONE = { paid:'success', unpaid:'warning', draft:'neutral', payment_pe
 async function loadInvoices(){
   const el = document.getElementById('section-invoices');
   el.innerHTML = `<div class="mcard"><div class="mcard-head"><h2 class="mcard-title">Invoices</h2>
-      <button class="mbtn mbtn-primary mbtn-sm" onclick="renderInvoiceForm()"><i data-lucide="plus" style="width:14px;height:14px"></i>New invoice</button></div>
+      <div style="display:flex;gap:8px"><button class="mbtn mbtn-secondary mbtn-sm" onclick="renderRecurringForm()"><i data-lucide="repeat" style="width:14px;height:14px"></i>New recurring</button>
+      <button class="mbtn mbtn-primary mbtn-sm" onclick="renderInvoiceForm()"><i data-lucide="plus" style="width:14px;height:14px"></i>New invoice</button></div></div>
     <div id="inv-list"><div class="empty"><div class="spinner"></div></div></div></div>
+    <div id="inv-recurring"></div>
     <div id="inv-form"></div>`;
   icons();
   try{
     const data = await api('/api/merchant-api/invoices');
     const items = data.invoices || [];
     const list = document.getElementById('inv-list');
-    if(!items.length){ list.innerHTML = `<div class="empty">No invoices yet. Create one to bill a customer.</div>`; return; }
-    list.innerHTML = `<div class="tbl-wrap"><table class="mtbl"><thead><tr><th>Invoice</th><th>Customer</th><th>Amount</th><th>Status</th><th>Created</th><th></th></tr></thead><tbody>
+    list.innerHTML = items.length ? `<div class="tbl-wrap"><table class="mtbl"><thead><tr><th>Invoice</th><th>Customer</th><th>Amount</th><th>Status</th><th>Created</th><th></th></tr></thead><tbody>
       ${items.map(i=>`<tr>
         <td class="cell-id">${i.number||String(i.id).slice(0,8)}</td>
         <td>${i.customer_name||'—'}<div class="cell-muted" style="font-size:11px">${i.customer_email||''}</div></td>
@@ -410,9 +411,58 @@ async function loadInvoices(){
         <td><span class="mbadge tone-${INV_TONE[i.status]||'neutral'}"><span class="mbadge-dot"></span>${i.status||'—'}</span></td>
         <td class="cell-muted">${i.created_at?new Date(i.created_at).toLocaleDateString():'—'}</td>
         <td>${i.hosted_url?`<a class="mbtn mbtn-secondary mbtn-sm" href="${i.hosted_url}" target="_blank"><i data-lucide="external-link" style="width:13px;height:13px"></i>Open</a>`:''}</td>
-      </tr>`).join('')}</tbody></table></div>`;
+      </tr>`).join('')}</tbody></table></div>` : `<div class="empty">No invoices yet. Create one to bill a customer.</div>`;
     icons();
+    loadRecurring();
   }catch(e){ if(e.message!=='unauthorized') document.getElementById('inv-list').innerHTML=`<div class="mcard-body"><div class="flash error">${e.message}</div></div>`; }
+}
+async function loadRecurring(){
+  const el=document.getElementById('inv-recurring'); if(!el) return;
+  try{
+    const data=await api('/api/merchant-api/recurring-invoices');
+    const items=(data.recurring||[]).filter(r=>r.active);
+    if(!items.length){ el.innerHTML=''; return; }
+    el.innerHTML=`<div class="mcard"><div class="mcard-head"><h2 class="mcard-title">Recurring</h2></div>
+      <div class="tbl-wrap"><table class="mtbl"><thead><tr><th>Customer</th><th>Amount</th><th>Every</th><th>Next</th><th></th></tr></thead><tbody>
+      ${items.map(r=>`<tr>
+        <td>${r.customer_name}<div class="cell-muted" style="font-size:11px">${r.customer_email}</div></td>
+        <td class="cell-amt">${fmt(r.amount)}</td>
+        <td>${r.interval_days} days</td>
+        <td class="cell-muted">${r.next_run||'—'}</td>
+        <td><button class="mbtn mbtn-secondary mbtn-sm" onclick="cancelRecurring('${r.id}')">Cancel</button></td>
+      </tr>`).join('')}</tbody></table></div></div>`;
+    icons();
+  }catch(_){ el.innerHTML=''; }
+}
+async function cancelRecurring(id){ try{ await api('/api/merchant-api/recurring-invoices/'+id+'/cancel',{method:'POST'}); loadRecurring(); }catch(_){} }
+function renderRecurringForm(){
+  const el=document.getElementById('inv-form');
+  el.innerHTML=`<div class="mcard"><div class="mcard-head"><h2 class="mcard-title">New recurring invoice</h2></div>
+    <div class="mcard-body"><form id="recForm" style="max-width:560px">
+      <div class="form-row"><div class="field"><label>Customer name</label><input id="r-name" placeholder="Acme Inc"></div>
+        <div class="field"><label>Customer email</label><input id="r-email" type="email" placeholder="billing@acme.com"></div></div>
+      <div class="form-row"><div class="field"><label>Amount (USD)</label><input id="r-amount" value="100.00" inputmode="decimal"></div>
+        <div class="field"><label>Every</label><select id="r-interval"><option value="7">Weekly</option><option value="30" selected>Monthly</option><option value="90">Quarterly</option></select></div></div>
+      <div class="field"><label>Description</label><input id="r-desc" placeholder="Subscription"></div>
+      <div class="form-actions"><button class="mbtn mbtn-primary mbtn-md" type="submit"><i data-lucide="repeat" style="width:15px;height:15px"></i>Start recurring</button></div>
+    </form><div id="rec-result"></div></div></div>`;
+  icons();
+  document.getElementById('recForm').addEventListener('submit', async e=>{
+    e.preventDefault();
+    const res=document.getElementById('rec-result');
+    try{
+      const cents=Math.round(parseFloat(document.getElementById('r-amount').value)*100);
+      if(!cents||cents<1) throw new Error('Enter a valid amount.');
+      await api('/api/merchant-api/recurring-invoices',{method:'POST',body:JSON.stringify({
+        customer_name:document.getElementById('r-name').value.trim(),
+        customer_email:document.getElementById('r-email').value.trim(),
+        amount:cents,
+        interval_days:parseInt(document.getElementById('r-interval').value,10),
+        description:document.getElementById('r-desc').value||null,
+      })});
+      document.getElementById('inv-form').innerHTML=''; loadRecurring();
+    }catch(e){ if(e.message!=='unauthorized') res.innerHTML=`<div class="flash error" style="margin-top:12px">${e.message}</div>`; }
+  });
 }
 function renderInvoiceForm(){
   const el = document.getElementById('inv-form');

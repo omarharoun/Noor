@@ -75,6 +75,8 @@ async fn main() -> anyhow::Result<()> {
     paybank_api::webhook_worker::spawn(state.clone());
     // Reconciliation poller for sessions stuck in `processing`.
     paybank_api::reconcile::spawn(state.clone());
+    // Recurring-invoice worker (issues due recurring invoices).
+    paybank_api::recurring::spawn(state.clone());
 
     let router = build_router(state);
 

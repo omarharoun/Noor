@@ -819,6 +819,102 @@ pub async fn get_invoice(
     Ok(Json(invoice_row_json(&row)))
 }
 
+// ── Recurring invoices (Phase 5) ────────────────────────────────────────────
+#[derive(Deserialize)]
+pub struct CreateRecurringRequest {
+    pub customer_name: String,
+    pub customer_email: String,
+    pub amount: i64,
+    pub description: Option<String>,
+    pub interval_days: Option<i32>,
+    pub start_date: Option<String>,
+}
+
+pub async fn create_recurring(
+    State(state): State<AppState>,
+    Extension(AuthedMerchant(merchant_id)): Extension<AuthedMerchant>,
+    Json(req): Json<CreateRecurringRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    if !req.customer_email.contains('@') {
+        return Err(AppError::BadRequest(
+            "a valid customer email is required".into(),
+        ));
+    }
+    if req.amount < 1 {
+        return Err(AppError::BadRequest("amount must be positive".into()));
+    }
+    let interval = req.interval_days.unwrap_or(30).max(1);
+    let start = req
+        .start_date
+        .as_deref()
+        .and_then(|s| chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").ok())
+        .unwrap_or_else(|| Utc::now().date_naive());
+    let id = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO recurring_invoices (id, merchant_id, customer_name, customer_email, \
+         amount_cents, description, interval_days, next_run) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)",
+    )
+    .bind(id)
+    .bind(merchant_id)
+    .bind(req.customer_name.trim())
+    .bind(req.customer_email.trim())
+    .bind(req.amount)
+    .bind(&req.description)
+    .bind(interval)
+    .bind(start)
+    .execute(&state.db.pool)
+    .await?;
+    Ok(Json(serde_json::json!({
+        "id": id, "interval_days": interval, "next_run": start.to_string(), "active": true,
+    })))
+}
+
+pub async fn list_recurring(
+    State(state): State<AppState>,
+    Extension(AuthedMerchant(merchant_id)): Extension<AuthedMerchant>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let rows = sqlx::query(
+        "SELECT id, customer_name, customer_email, amount_cents, interval_days, next_run, active \
+         FROM recurring_invoices WHERE merchant_id=$1 ORDER BY created_at DESC LIMIT 100",
+    )
+    .bind(merchant_id)
+    .fetch_all(&state.db.pool)
+    .await?;
+    let items: Vec<serde_json::Value> = rows
+        .iter()
+        .map(|r| {
+            serde_json::json!({
+                "id": r.try_get::<Uuid,_>("id").ok(),
+                "customer_name": r.try_get::<String,_>("customer_name").unwrap_or_default(),
+                "customer_email": r.try_get::<String,_>("customer_email").unwrap_or_default(),
+                "amount": r.try_get::<i64,_>("amount_cents").unwrap_or(0),
+                "interval_days": r.try_get::<i32,_>("interval_days").unwrap_or(30),
+                "next_run": r.try_get::<chrono::NaiveDate,_>("next_run").map(|d| d.to_string()).ok(),
+                "active": r.try_get::<bool,_>("active").unwrap_or(false),
+            })
+        })
+        .collect();
+    Ok(Json(serde_json::json!({ "recurring": items })))
+}
+
+pub async fn cancel_recurring(
+    State(state): State<AppState>,
+    Extension(AuthedMerchant(merchant_id)): Extension<AuthedMerchant>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let res = sqlx::query(
+        "UPDATE recurring_invoices SET active=false, updated_at=NOW() WHERE id=$1 AND merchant_id=$2",
+    )
+    .bind(id)
+    .bind(merchant_id)
+    .execute(&state.db.pool)
+    .await?;
+    if res.rows_affected() == 0 {
+        return Err(AppError::PaymentNotFound);
+    }
+    Ok(Json(serde_json::json!({ "id": id, "active": false })))
+}
+
 // ── Merchant bank account (Phase 1: onboard via MT, no Plaid) ───────────────
 #[derive(Deserialize)]
 pub struct AddBankAccountRequest {

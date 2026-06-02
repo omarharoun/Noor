@@ -193,6 +193,14 @@ pub fn build_router(state: AppState) -> Router {
             get(routes::merchant_api::get_invoice),
         )
         .route(
+            "/api/merchant-api/recurring-invoices",
+            get(routes::merchant_api::list_recurring).post(routes::merchant_api::create_recurring),
+        )
+        .route(
+            "/api/merchant-api/recurring-invoices/:id/cancel",
+            post(routes::merchant_api::cancel_recurring),
+        )
+        .route(
             "/api/merchant-api/users",
             get(routes::merchant_api::list_users).post(routes::merchant_api::invite_user),
         )
