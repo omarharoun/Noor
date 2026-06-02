@@ -97,8 +97,14 @@ impl IntoResponse for AppError {
             AppError::MissingIdempotencyKey => (StatusCode::BAD_REQUEST, self.to_string()),
             AppError::IdempotencyMismatch => (StatusCode::CONFLICT, self.to_string()),
             AppError::IdempotencyConflict => (StatusCode::CONFLICT, self.to_string()),
-            AppError::ColumnError(_) => (StatusCode::BAD_GATEWAY, self.to_string()),
-            AppError::ModernTreasuryError(_) => (StatusCode::BAD_GATEWAY, self.to_string()),
+            AppError::ColumnError(_) => {
+                tracing::warn!("Provider error: {}", self);
+                (StatusCode::BAD_GATEWAY, self.to_string())
+            }
+            AppError::ModernTreasuryError(_) => {
+                tracing::warn!("Provider error: {}", self);
+                (StatusCode::BAD_GATEWAY, self.to_string())
+            }
             AppError::ProviderAmbiguous(_) => (StatusCode::GATEWAY_TIMEOUT, self.to_string()),
             AppError::PlaidError(_) => (StatusCode::BAD_GATEWAY, self.to_string()),
             AppError::AuthError(_) => (StatusCode::UNAUTHORIZED, self.to_string()),

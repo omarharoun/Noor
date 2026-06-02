@@ -535,7 +535,8 @@ pub async fn create_invoice(
         req.description.as_deref(),
         &items,
     )
-    .await?;
+    .await
+    .map_err(|e| AppError::BadRequest(format!("invoice provider error: {e}")))?;
 
     let id = Uuid::new_v4();
     let due = req
