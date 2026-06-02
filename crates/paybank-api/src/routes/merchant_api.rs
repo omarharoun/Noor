@@ -109,6 +109,174 @@ pub struct CreatePaymentLinkResponse {
     pub id: Uuid,
 }
 
+// ── Accounting (Phase 5): reports + CSV export ──────────────────────────────
+pub async fn report_summary(
+    State(state): State<AppState>,
+    Extension(AuthedMerchant(merchant_id)): Extension<AuthedMerchant>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let pool = &state.db.pool;
+    let available =
+        paybank_db::ledger_repo::LedgerRepo::merchant_available_cents(pool, merchant_id)
+            .await
+            .map_err(|e| AppError::Internal(e.into()))?;
+    let pending = session_repo::pending_amount_cents(pool, merchant_id)
+        .await
+        .map_err(AppError::Internal)?;
+
+    let scal = |sql: &'static str| {
+        let pool = pool.clone();
+        async move {
+            sqlx::query_scalar::<_, i64>(sql)
+                .bind(merchant_id)
+                .fetch_one(&pool)
+                .await
+                .unwrap_or(0)
+        }
+    };
+    let collected =
+        scal("SELECT COALESCE(SUM(amount_cents),0)::int8 FROM transactions WHERE merchant_id=$1")
+            .await;
+    let txn_count = scal("SELECT COUNT(*)::int8 FROM transactions WHERE merchant_id=$1").await;
+    let invoices_total =
+        scal("SELECT COALESCE(SUM(amount_cents),0)::int8 FROM invoices WHERE merchant_id=$1").await;
+    let invoices_count = scal("SELECT COUNT(*)::int8 FROM invoices WHERE merchant_id=$1").await;
+    let invoices_paid =
+        scal("SELECT COUNT(*)::int8 FROM invoices WHERE merchant_id=$1 AND status='paid'").await;
+    let invoices_unpaid =
+        scal("SELECT COUNT(*)::int8 FROM invoices WHERE merchant_id=$1 AND status<>'paid'").await;
+    let payouts_total = scal(
+        "SELECT COALESCE(SUM(amount_cents),0)::int8 FROM payouts WHERE merchant_id=$1 AND status IN ('processing','completed')",
+    )
+    .await;
+    let payouts_count = scal(
+        "SELECT COUNT(*)::int8 FROM payouts WHERE merchant_id=$1 AND status IN ('processing','completed')",
+    )
+    .await;
+    let payouts_pending = scal(
+        "SELECT COUNT(*)::int8 FROM payouts WHERE merchant_id=$1 AND status='pending_approval'",
+    )
+    .await;
+
+    Ok(Json(serde_json::json!({
+        "balance": { "available": available, "pending": pending, "currency": "USD" },
+        "collected": { "total": collected, "count": txn_count },
+        "invoices": { "count": invoices_count, "paid": invoices_paid, "unpaid": invoices_unpaid, "total": invoices_total },
+        "payouts": { "count": payouts_count, "total": payouts_total, "pending_approval": payouts_pending },
+    })))
+}
+
+fn csv_escape(s: &str) -> String {
+    if s.contains(',') || s.contains('"') || s.contains('\n') {
+        format!("\"{}\"", s.replace('"', "\"\""))
+    } else {
+        s.to_string()
+    }
+}
+
+/// CSV export of payments | invoices | payouts for the authenticated merchant.
+pub async fn export_csv(
+    State(state): State<AppState>,
+    Extension(AuthedMerchant(merchant_id)): Extension<AuthedMerchant>,
+    Path(kind): Path<String>,
+) -> Result<axum::response::Response, AppError> {
+    use axum::response::IntoResponse;
+    let pool = &state.db.pool;
+    let (header, rows): (&str, Vec<String>) = match kind.as_str() {
+        "payments" => {
+            let (txns, _) =
+                transaction_repo::list_transactions(pool, merchant_id, 10000, 0).await?;
+            let rows = txns
+                .iter()
+                .map(|t| {
+                    format!(
+                        "{},{},{:.2},{},{}",
+                        t.id,
+                        t.session_id,
+                        t.amount_cents as f64 / 100.0,
+                        csv_escape(&format!("{:?}", t.rail_used)),
+                        t.created_at.format("%Y-%m-%d")
+                    )
+                })
+                .collect();
+            ("id,session_id,amount,rail,date", rows)
+        }
+        "invoices" => {
+            let recs = sqlx::query(
+                "SELECT number, customer_name, customer_email, amount_cents, status, created_at \
+                 FROM invoices WHERE merchant_id=$1 ORDER BY created_at DESC LIMIT 10000",
+            )
+            .bind(merchant_id)
+            .fetch_all(pool)
+            .await?;
+            let rows = recs
+                .iter()
+                .map(|r| {
+                    format!(
+                        "{},{},{},{:.2},{},{}",
+                        csv_escape(
+                            &r.try_get::<Option<String>, _>("number")
+                                .ok()
+                                .flatten()
+                                .unwrap_or_default()
+                        ),
+                        csv_escape(&r.try_get::<String, _>("customer_name").unwrap_or_default()),
+                        csv_escape(&r.try_get::<String, _>("customer_email").unwrap_or_default()),
+                        r.try_get::<i64, _>("amount_cents").unwrap_or(0) as f64 / 100.0,
+                        r.try_get::<String, _>("status").unwrap_or_default(),
+                        r.try_get::<chrono::DateTime<chrono::Utc>, _>("created_at")
+                            .map(|d| d.format("%Y-%m-%d").to_string())
+                            .unwrap_or_default(),
+                    )
+                })
+                .collect();
+            ("number,customer,email,amount,status,date", rows)
+        }
+        "payouts" => {
+            let recs = sqlx::query(
+                "SELECT payee_name, amount_cents, rail, status, created_at \
+                 FROM payouts WHERE merchant_id=$1 ORDER BY created_at DESC LIMIT 10000",
+            )
+            .bind(merchant_id)
+            .fetch_all(pool)
+            .await?;
+            let rows = recs
+                .iter()
+                .map(|r| {
+                    format!(
+                        "{},{:.2},{},{},{}",
+                        csv_escape(&r.try_get::<String, _>("payee_name").unwrap_or_default()),
+                        r.try_get::<i64, _>("amount_cents").unwrap_or(0) as f64 / 100.0,
+                        r.try_get::<String, _>("rail").unwrap_or_default(),
+                        r.try_get::<String, _>("status").unwrap_or_default(),
+                        r.try_get::<chrono::DateTime<chrono::Utc>, _>("created_at")
+                            .map(|d| d.format("%Y-%m-%d").to_string())
+                            .unwrap_or_default(),
+                    )
+                })
+                .collect();
+            ("payee,amount,rail,status,date", rows)
+        }
+        _ => return Err(AppError::BadRequest("unknown export type".into())),
+    };
+    let mut body = String::from(header);
+    body.push('\n');
+    for r in rows {
+        body.push_str(&r);
+        body.push('\n');
+    }
+    Ok((
+        [
+            (axum::http::header::CONTENT_TYPE, "text/csv".to_string()),
+            (
+                axum::http::header::CONTENT_DISPOSITION,
+                format!("attachment; filename=\"noor-{}.csv\"", kind),
+            ),
+        ],
+        body,
+    )
+        .into_response())
+}
+
 // ── Payouts (Phase 3b): send money with dual-control approval ───────────────
 fn map_rail(s: &str) -> PaymentRail {
     match s.to_lowercase().as_str() {

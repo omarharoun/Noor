@@ -150,6 +150,7 @@ pre{background:var(--cream-deep);border:1px solid var(--border);border-radius:va
     <button class="nav-item active" data-tab="overview"><i data-lucide="layout-dashboard"></i>Overview</button>
     <button class="nav-item" data-tab="payments"><i data-lucide="receipt"></i>Payments</button>
     <button class="nav-item" data-tab="invoices"><i data-lucide="file-text"></i>Invoices</button>
+    <button class="nav-item" data-tab="reports"><i data-lucide="bar-chart-3"></i>Reports</button>
     <button class="nav-item" data-tab="send"><i data-lucide="send"></i>Send money</button>
     <button class="nav-item" data-tab="approvals" id="nav-approvals" style="display:none"><i data-lucide="check-square"></i>Approvals</button>
     <button class="nav-item" data-tab="create"><i data-lucide="plus-circle"></i>Payment link</button>
@@ -172,6 +173,7 @@ pre{background:var(--cream-deep);border:1px solid var(--border);border-radius:va
       <div id="section-overview" class="section active"></div>
       <div id="section-payments" class="section"></div>
       <div id="section-invoices" class="section"></div>
+      <div id="section-reports" class="section"></div>
       <div id="section-send" class="section"></div>
       <div id="section-approvals" class="section"></div>
       <div id="section-create" class="section"></div>
@@ -197,6 +199,7 @@ const TITLES = {
   overview: ['Overview', 'Your balance and recent payment activity.'],
   payments: ['Payments', 'Settled and in-flight payments on your account.'],
   invoices: ['Invoices', 'Send invoices and get paid by bank transfer.'],
+  reports:  ['Reports', 'Money in, money out, and exports for your books.'],
   send:     ['Send money', 'Pay a vendor or contractor from your balance.'],
   approvals:['Approvals', 'Payouts awaiting a second approver.'],
   create:   ['Payment link', 'Create a hosted checkout link to collect a payment.'],
@@ -265,6 +268,7 @@ document.querySelectorAll('.nav-item').forEach(a => a.addEventListener('click', 
   if(tab==='overview') loadOverview();
   if(tab==='payments') loadPayments();
   if(tab==='invoices') loadInvoices();
+  if(tab==='reports') loadReports();
   if(tab==='send') loadSend();
   if(tab==='approvals') loadApprovals();
   if(tab==='create') renderCreate();
@@ -506,6 +510,40 @@ function renderBankForm(){
       loadBank();
     }catch(e){ if(e.message!=='unauthorized') res.innerHTML=`<div class="flash error" style="margin-top:14px">${e.message}</div>`; btn.disabled=false; btn.innerHTML='<i data-lucide="landmark" style="width:15px;height:15px"></i>Add & verify'; icons(); }
   });
+}
+
+/* ---------- reports ---------- */
+async function loadReports(){
+  const el=document.getElementById('section-reports');
+  el.innerHTML=`<div class="mcard"><div class="mcard-body"><div class="empty"><div class="spinner"></div></div></div></div>`;
+  try{
+    const r=await api('/api/merchant-api/reports/summary');
+    const card=(label,val,sub)=>`<div class="mini-stat" style="padding:18px"><div><div class="ms-label">${label}</div><div class="ms-value">${val}</div>${sub?`<div class="cell-muted" style="font-size:11px">${sub}</div>`:''}</div></div>`;
+    el.innerHTML=`
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:16px">
+        ${card('Available balance', fmt(r.balance.available))}
+        ${card('Collected', fmt(r.collected.total), r.collected.count+' payments')}
+        ${card('Paid out', fmt(r.payouts.total), r.payouts.count+' payouts')}
+        ${card('Invoiced', fmt(r.invoices.total), r.invoices.count+' invoices · '+r.invoices.paid+' paid')}
+      </div>
+      <div class="mcard"><div class="mcard-head"><h2 class="mcard-title">Exports</h2></div>
+        <div class="mcard-body" style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="mbtn mbtn-secondary mbtn-sm" onclick="downloadCsv('payments')"><i data-lucide="download" style="width:14px;height:14px"></i>Payments CSV</button>
+          <button class="mbtn mbtn-secondary mbtn-sm" onclick="downloadCsv('invoices')"><i data-lucide="download" style="width:14px;height:14px"></i>Invoices CSV</button>
+          <button class="mbtn mbtn-secondary mbtn-sm" onclick="downloadCsv('payouts')"><i data-lucide="download" style="width:14px;height:14px"></i>Payouts CSV</button>
+        </div></div>`;
+    icons();
+  }catch(e){ if(e.message!=='unauthorized') el.innerHTML=`<div class="mcard"><div class="mcard-body"><div class="flash error">${e.message}</div></div></div>`; }
+}
+async function downloadCsv(kind){
+  try{
+    const res=await fetch('/api/merchant-api/exports/'+kind,{headers:{'Authorization':'Bearer '+TOKEN}});
+    if(!res.ok) throw new Error('export failed');
+    const text=await res.text();
+    const blob=new Blob([text],{type:'text/csv'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a'); a.href=url; a.download='noor-'+kind+'.csv'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+  }catch(e){ /* ignore */ }
 }
 
 /* ---------- send money ---------- */

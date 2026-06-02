@@ -208,6 +208,14 @@ pub fn build_router(state: AppState) -> Router {
             "/api/merchant-api/payouts/:id/reject",
             post(routes::merchant_api::reject_payout),
         )
+        .route(
+            "/api/merchant-api/reports/summary",
+            get(routes::merchant_api::report_summary),
+        )
+        .route(
+            "/api/merchant-api/exports/:kind",
+            get(routes::merchant_api::export_csv),
+        )
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             auth::merchant_auth,
