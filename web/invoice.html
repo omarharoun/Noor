@@ -87,16 +87,6 @@ const badge = (status) => `<span class="nbadge tone-${TONE[status]||'neutral'}">
 async function load() {
   try {
     const s = await (await fetch('/api/sessions/' + SESSION_ID)).json();
-    let mtOrder = null, mtCp = null;
-    if (s.column_ref) {
-      try { mtOrder = await (await fetch('/api/mt/payment-orders/' + s.column_ref)).json(); }
-      catch(e) { mtOrder = { error: 'Could not reach Modern Treasury' }; }
-    }
-    if (s.column_counterparty_id) {
-      const cpId = s.column_counterparty_id.split('|')[0];
-      try { mtCp = await (await fetch('/api/mt/counterparties/' + cpId)).json(); }
-      catch(e) { mtCp = { error: 'Could not reach Modern Treasury' }; }
-    }
 
     document.getElementById('loading').style.display = 'none';
     const el = document.getElementById('invoice');
@@ -145,41 +135,10 @@ async function load() {
         <div class="inv-grid c3">
           <div class="fld"><label>Account</label><div class="v mono">${s.customer_account_last4 ? '••••' + s.customer_account_last4 : '••••'}</div></div>
           <div class="fld"><label>Type</label><div class="v">${s.customer_account_type || '—'}</div></div>
-          <div class="fld"><label>Linked via</label><div class="v">Plaid</div></div>
-        </div>` : ''}
-
-        <div class="inv-section">Modern Treasury</div>
-        <div class="mt-box">
-          <div class="mt-row"><span class="k">Payment order</span><span class="v">${s.column_ref || '—'}</span></div>
-          <div class="mt-row"><span class="k">Counterparty</span><span class="v">${cp[0] || '—'}</span></div>
-          <div class="mt-row"><span class="k">External account</span><span class="v">${cp[1] || '—'}</span></div>
-          ${mtOrder ? (mtOrder.error ? `
-          <div class="mt-row"><span class="k">Status</span><span class="v" style="color:var(--ink-3)">${mtOrder.error}</span></div>
-          ` : `
-          <div class="mt-row"><span class="k">Status</span><span class="v" style="font-family:var(--font-sans)">${badge(mtOrder.status)}</span></div>
-          <div class="mt-row"><span class="k">Type · direction</span><span class="v">${mtOrder.type || '—'} · ${mtOrder.direction || '—'}</span></div>
-          <div class="mt-row"><span class="k">Created</span><span class="v">${mtOrder.created_at ? new Date(mtOrder.created_at).toLocaleString() : '—'}</span></div>
-          `) : '<div class="mt-row"><span class="k">Loading MT data…</span><span class="v"></span></div>'}
-        </div>
-
-        ${mtCp && !mtCp.error ? `
-        <div class="inv-section">MT counterparty</div>
-        <div class="mt-box">
-          <div class="mt-row"><span class="k">Name</span><span class="v" style="font-family:var(--font-sans)">${mtCp.name || '—'}</span></div>
-          <div class="mt-row"><span class="k">Email</span><span class="v" style="font-family:var(--font-sans)">${mtCp.email || '—'}</span></div>
-          <div class="mt-row"><span class="k">ID</span><span class="v">${mtCp.id || '—'}</span></div>
-          ${mtCp.accounts && mtCp.accounts.length ? `
-          <table><tr><th>Account</th><th>Status</th><th>Number</th></tr>
-          ${mtCp.accounts.map(a => `<tr>
-            <td style="font-family:var(--font-mono);font-size:11px">${(a.id||'—').slice(0,8)}…</td>
-            <td>${badge(a.status === 'completed' ? 'completed' : 'pending')}</td>
-            <td>${a.account_details?.[0]?.account_number_safe ? '••••'+a.account_details[0].account_number_safe : '—'}</td>
-          </tr>`).join('')}
-          </table>` : ''}
+          <div class="fld"><label>Status</label><div class="v">Linked</div></div>
         </div>` : ''}
 
         <div class="inv-actions">
-          ${s.column_ref ? `<a class="btn primary" href="https://app.moderntreasury.com/payment-orders/${s.column_ref}" target="_blank"><i data-lucide="external-link" style="width:15px;height:15px"></i>View in Modern Treasury</a>` : ''}
           <a class="btn secondary" href="/pay/${SESSION_ID}"><i data-lucide="qr-code" style="width:15px;height:15px"></i>Pay page</a>
         </div>
 
