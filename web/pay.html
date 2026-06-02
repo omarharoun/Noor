@@ -101,7 +101,6 @@ body{font-family:var(--font-sans);background:var(--cream-deep);color:var(--ink);
 </div>
 
 <script src="https://unpkg.com/lucide@0.456.0/dist/umd/lucide.min.js"></script>
-<script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
 <script>
 const SESSION_ID = '__SESSION_ID__';
 
@@ -140,20 +139,17 @@ async function load() {
       </div>
 
       <div id="bank-section" class="${pending?'':'hidden'}">
-        <div class="linkrow">
-          <div class="li"><i data-lucide="${hasBank?'check':'landmark'}" style="width:17px;height:17px"></i></div>
-          <div style="flex:1">
-            <div class="lt" id="link-title">${hasBank?'Bank account linked':'Link your bank account'}</div>
-            <div class="ls">${hasBank?'Verified via Plaid':'Securely connect with Plaid'}</div>
-          </div>
-          <button id="link-btn" class="btn secondary">${hasBank?'Change':'Link'}</button>
-        </div>
         <div class="field"><label>Full name</label><input id="customer-name" placeholder="Full name" value="${s.customer_name||''}"></div>
         <div class="field"><label>Street address</label><input id="customer-address" placeholder="Street address" value="${s.customer_address_line_1||''}"></div>
         <div class="field field-row">
           <input id="customer-city" placeholder="City" value="${s.customer_address_city||''}">
           <input id="customer-state" placeholder="State" value="${s.customer_address_state||''}">
           <input id="customer-zip" placeholder="ZIP" value="${s.customer_address_postal_code||''}">
+        </div>
+        <div class="field"><label>Routing number</label><input id="customer-routing" inputmode="numeric" placeholder="9 digits"></div>
+        <div class="field field-row">
+          <input id="customer-account" inputmode="numeric" placeholder="Account number">
+          <select id="customer-acct-type"><option value="checking">Checking</option><option value="savings">Savings</option></select>
         </div>
         <button id="confirm-btn" class="pay-btn"><i data-lucide="lock" style="width:15px;height:15px"></i>Confirm &amp; pay ${fmt(s.amount_cents)}</button>
         <div class="note-line"><i data-lucide="shield-check" style="width:13px;height:13px"></i>Bank-grade encryption · funds move in seconds</div>
@@ -169,31 +165,10 @@ async function load() {
         .catch(() => { const q = document.querySelector('.qr-well'); if (q) q.innerHTML = '<span style="color:var(--ink-4);font-size:12px">QR unavailable</span>'; });
     }
 
-    document.getElementById('link-btn')?.addEventListener('click', openPlaidLink);
     document.getElementById('confirm-btn')?.addEventListener('click', confirmPayment);
   } catch (e) {
     el.innerHTML = '<div class="flash error">' + e.message + '</div>';
   }
-}
-
-function openPlaidLink() {
-  const btn = document.getElementById('link-btn');
-  btn.disabled = true; btn.textContent = 'Connecting…';
-  fetch('/api/plaid/link-token?session_id=' + SESSION_ID)
-    .then(r => r.json())
-    .then(data => {
-      const handler = Plaid.create({
-        token: data.link_token,
-        onSuccess: (public_token) => {
-          fetch('/api/plaid/exchange', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ session_id: SESSION_ID, public_token }) })
-            .then(r => r.json()).then(() => load())
-            .catch(() => { btn.textContent = 'Link'; btn.disabled = false; });
-        },
-        onExit: () => { btn.textContent = 'Link'; btn.disabled = false; }
-      });
-      handler.open();
-    })
-    .catch(() => { btn.textContent = 'Link'; btn.disabled = false; });
 }
 
 async function confirmPayment() {
@@ -202,15 +177,20 @@ async function confirmPayment() {
   const city = document.getElementById('customer-city')?.value.trim();
   const state = document.getElementById('customer-state')?.value.trim();
   const zip = document.getElementById('customer-zip')?.value.trim();
+  const routing = document.getElementById('customer-routing')?.value.trim();
+  const account = document.getElementById('customer-account')?.value.trim();
+  const acctType = document.getElementById('customer-acct-type')?.value;
   const msg = document.getElementById('status-msg');
   if (!name || !addr || !city || !state || !zip) { msg.innerHTML = '<div class="flash error">Please fill in all fields</div>'; return; }
+  if (!/^\d{9}$/.test(routing||'')) { msg.innerHTML = '<div class="flash error">Routing number must be 9 digits</div>'; return; }
+  if (!/^\d{4,17}$/.test(account||'')) { msg.innerHTML = '<div class="flash error">Enter a valid account number</div>'; return; }
 
   const btn = document.getElementById('confirm-btn');
   btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Processing payment…';
   try {
     const res = await fetch('/api/sessions/' + SESSION_ID + '/confirm', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ session_id: SESSION_ID, customer_name:name, customer_address_line_1:addr, customer_city:city, customer_state:state, customer_postal_code:zip, customer_country_code:'US' })
+      body: JSON.stringify({ session_id: SESSION_ID, customer_name:name, customer_address_line_1:addr, customer_city:city, customer_state:state, customer_postal_code:zip, customer_country_code:'US', routing_number:routing, account_number:account, account_type:acctType })
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Confirmation failed');

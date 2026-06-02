@@ -4,7 +4,6 @@ pub mod confirm;
 pub mod initiate;
 pub mod merchant_api;
 pub mod mt;
-pub mod plaid;
 pub mod sessions;
 pub mod transactions;
 pub mod webhooks;

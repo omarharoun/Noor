@@ -177,17 +177,12 @@ pub async fn list_merchants(
         .fetch_one(pool)
         .await?;
 
-    let merchants: Vec<Merchant> = sqlx::query_as(
-        r#"SELECT id, name, email, password_hash, api_key, webhook_url,
-                  business_name, business_type, registration_number, tax_id,
-                  industry_category, website_url, status, kyc_status, risk_level,
-                  onboarding_completed_at, created_at, updated_at
-           FROM merchants ORDER BY created_at DESC LIMIT $1 OFFSET $2"#,
-    )
-    .bind(limit)
-    .bind(offset)
-    .fetch_all(pool)
-    .await?;
+    let merchants: Vec<Merchant> =
+        sqlx::query_as(r#"SELECT * FROM merchants ORDER BY created_at DESC LIMIT $1 OFFSET $2"#)
+            .bind(limit)
+            .bind(offset)
+            .fetch_all(pool)
+            .await?;
 
     Ok((merchants, total))
 }
@@ -201,10 +196,7 @@ pub async fn create_merchant(
     let merchant: Merchant = sqlx::query_as(
         r#"INSERT INTO merchants (name, email, api_key)
            VALUES ($1, $2, $3)
-           RETURNING id, name, email, password_hash, api_key, webhook_url,
-                     business_name, business_type, registration_number, tax_id,
-                     industry_category, website_url, status, kyc_status, risk_level,
-                     onboarding_completed_at, created_at, updated_at"#,
+           RETURNING *"#,
     )
     .bind(name)
     .bind(email)
@@ -240,10 +232,7 @@ pub async fn update_merchant(
                webhook_url = COALESCE($7, webhook_url),
                updated_at = NOW()
            WHERE id = $1
-           RETURNING id, name, email, password_hash, api_key, webhook_url,
-                     business_name, business_type, registration_number, tax_id,
-                     industry_category, website_url, status, kyc_status, risk_level,
-                     onboarding_completed_at, created_at, updated_at"#,
+           RETURNING *"#,
     )
     .bind(id)
     .bind(business_name)
@@ -306,16 +295,10 @@ pub async fn list_webhook_events(
 }
 
 pub async fn get_merchant(pool: &PgPool, id: Uuid) -> Result<Option<Merchant>> {
-    let merchant: Option<Merchant> = sqlx::query_as(
-        r#"SELECT id, name, email, password_hash, api_key, webhook_url,
-                  business_name, business_type, registration_number, tax_id,
-                  industry_category, website_url, status, kyc_status, risk_level,
-                  onboarding_completed_at, created_at, updated_at
-           FROM merchants WHERE id = $1"#,
-    )
-    .bind(id)
-    .fetch_optional(pool)
-    .await?;
+    let merchant: Option<Merchant> = sqlx::query_as(r#"SELECT * FROM merchants WHERE id = $1"#)
+        .bind(id)
+        .fetch_optional(pool)
+        .await?;
     Ok(merchant)
 }
 

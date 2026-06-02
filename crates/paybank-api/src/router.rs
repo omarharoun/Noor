@@ -246,14 +246,6 @@ pub fn build_router(state: AppState) -> Router {
             "/api/webhooks/moderntreasury",
             post(routes::webhooks::moderntreasury_webhook),
         )
-        .route(
-            "/api/plaid/link-token",
-            get(routes::plaid::create_link_token),
-        )
-        .route(
-            "/api/plaid/exchange",
-            post(routes::plaid::exchange_public_token),
-        )
         .route("/pay/:id", get(pay_page))
         .route("/invoice/:id", get(invoice_page))
         .route(

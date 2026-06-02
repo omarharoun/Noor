@@ -15,6 +15,10 @@ pub struct ConfirmRequest {
     pub customer_address_line_1: String,
     pub customer_postal_code: String,
     pub customer_country_code: String,
+    // Bank details entered directly by the customer (no Plaid).
+    pub account_number: String,
+    pub routing_number: String,
+    pub account_type: String, // checking | savings
 }
 
 pub async fn confirm_payment(
@@ -31,6 +35,26 @@ pub async fn confirm_payment(
     }
     if session.status == SessionStatus::Completed {
         return Ok(Json(serde_json::json!({ "status": "completed" })));
+    }
+
+    // Validate the directly-entered bank details (no Plaid).
+    let routing = req.routing_number.trim();
+    let account = req.account_number.trim();
+    let acct_type = req.account_type.trim().to_lowercase();
+    if routing.len() != 9 || !routing.chars().all(|c| c.is_ascii_digit()) {
+        return Err(AppError::BadRequest(
+            "routing number must be 9 digits".into(),
+        ));
+    }
+    if account.len() < 4 || account.len() > 17 || !account.chars().all(|c| c.is_ascii_digit()) {
+        return Err(AppError::BadRequest(
+            "account number must be 4–17 digits".into(),
+        ));
+    }
+    if acct_type != "checking" && acct_type != "savings" {
+        return Err(AppError::BadRequest(
+            "account type must be checking or savings".into(),
+        ));
     }
 
     // Fail-closed compliance gate: merchant KYC + customer sanctions screening.
@@ -89,22 +113,19 @@ pub async fn confirm_payment(
         &req.customer_state,
         &req.customer_postal_code,
         &req.customer_country_code,
-        &session.customer_account_number.clone().unwrap_or_default(),
-        &session.customer_routing_number.clone().unwrap_or_default(),
-        &session.customer_account_type.clone().unwrap_or_default(),
+        account,
+        routing,
+        &acct_type,
     )
     .await?;
 
-    let counterparty_id = if let (Some(acct_num), Some(rout_num), Some(acct_type)) = (
-        &session.customer_account_number,
-        &session.customer_routing_number,
-        &session.customer_account_type,
-    ) {
+    // Create the MT counterparty from the customer's entered bank details.
+    let counterparty_id = {
         let details = BankAccountDetails {
             account_id: String::new(),
             account_name: req.customer_name.clone(),
-            account_number: acct_num.clone(),
-            routing_number: rout_num.clone(),
+            account_number: account.to_string(),
+            routing_number: routing.to_string(),
             account_type: acct_type.clone(),
             subtype: acct_type.clone(),
             available_balance: None,
@@ -131,8 +152,6 @@ pub async fn confirm_payment(
         let stored = format!("{}|{}", result.counterparty_id, result.external_account_id);
         session_repo::update_counterparty_id(&state.db.pool, req.session_id, &stored).await?;
         Some(stored)
-    } else {
-        None
     };
 
     // Status already set to Authorized by the atomic claim above.

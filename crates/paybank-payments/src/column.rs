@@ -4,7 +4,7 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 
-use crate::plaid::BankAccountDetails;
+use crate::BankAccountDetails;
 
 const COLUMN_BASE_URL: &str = "https://api.column.com";
 

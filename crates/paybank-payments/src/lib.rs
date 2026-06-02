@@ -1,13 +1,26 @@
 pub mod column;
 pub mod moderntreasury;
-pub mod plaid;
 pub mod rail;
 
 use paybank_core::{AppError, PaymentRail};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
-pub use plaid::{create_link_token, exchange_public_token, get_auth, BankAccountDetails};
 pub use rail::choose_rail;
+
+/// Bank account details used to create a counterparty/external account.
+/// (Previously sourced from Plaid; now entered directly by the customer.)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BankAccountDetails {
+    pub account_id: String,
+    pub account_name: String,
+    pub account_number: String,
+    pub routing_number: String,
+    pub account_type: String,
+    pub subtype: String,
+    pub available_balance: Option<f64>,
+    pub current_balance: Option<f64>,
+    pub iso_currency_code: Option<String>,
+}
 
 pub enum PaymentProvider {
     ModernTreasury,

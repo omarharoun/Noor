@@ -124,7 +124,7 @@ function SessionDetail({
 
   const steps: { label: string; time: string; state: 'done' | 'now' | 'wait' }[] = [
     { label: 'Session created', time: ago(s.created_at), state: 'done' },
-    { label: 'Bank linked via Plaid', time: hasBank ? 'verified' : 'awaiting', state: hasBank ? 'done' : 'wait' },
+    { label: 'Bank linked', time: hasBank ? 'verified' : 'awaiting', state: hasBank ? 'done' : 'wait' },
     {
       label: 'Confirmed · counterparty',
       time: ['completed', 'processing', 'authorized'].includes(s.status) ? 'created' : 'awaiting',
