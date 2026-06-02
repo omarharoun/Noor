@@ -527,22 +527,30 @@ pub async fn create_invoice(
         }
     };
 
+    // Modern Treasury requires a due date; default to 30 days out if the
+    // merchant didn't pick one.
+    let due_str = req
+        .due_date
+        .clone()
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| {
+            (Utc::now() + Duration::days(30))
+                .format("%Y-%m-%d")
+                .to_string()
+        });
+
     let created = paybank_payments::create_invoice(
         name,
         email,
         "USD",
-        req.due_date.as_deref(),
+        Some(&due_str),
         req.description.as_deref(),
         &items,
     )
-    .await
-    .map_err(|e| AppError::BadRequest(format!("invoice provider error: {e}")))?;
+    .await?;
 
     let id = Uuid::new_v4();
-    let due = req
-        .due_date
-        .as_deref()
-        .and_then(|s| chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").ok());
+    let due = chrono::NaiveDate::parse_from_str(&due_str, "%Y-%m-%d").ok();
 
     sqlx::query(
         "INSERT INTO invoices (id, merchant_id, mt_invoice_id, mt_counterparty_id, number, \
