@@ -109,6 +109,183 @@ pub struct CreatePaymentLinkResponse {
     pub id: Uuid,
 }
 
+// ── Invoicing (Phase 2) ─────────────────────────────────────────────────────
+#[derive(Deserialize)]
+pub struct InvoiceLineItemInput {
+    pub name: String,
+    pub quantity: i64,
+    pub unit_amount: i64,
+}
+
+#[derive(Deserialize)]
+pub struct CreateInvoiceRequest {
+    pub customer_name: String,
+    pub customer_email: String,
+    pub amount: Option<i64>, // cents, single-line; ignored if line_items given
+    pub description: Option<String>,
+    pub due_date: Option<String>, // YYYY-MM-DD
+    pub line_items: Option<Vec<InvoiceLineItemInput>>,
+}
+
+pub async fn create_invoice(
+    State(state): State<AppState>,
+    Extension(AuthedMerchant(merchant_id)): Extension<AuthedMerchant>,
+    Json(req): Json<CreateInvoiceRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let name = req.customer_name.trim();
+    let email = req.customer_email.trim();
+    if name.is_empty() {
+        return Err(AppError::BadRequest("customer name is required".into()));
+    }
+    if !email.contains('@') {
+        return Err(AppError::BadRequest(
+            "a valid customer email is required".into(),
+        ));
+    }
+
+    // Build line items: explicit list, or a single line from amount + description.
+    let items: Vec<paybank_payments::InvoiceLineItem> = match &req.line_items {
+        Some(lis) if !lis.is_empty() => lis
+            .iter()
+            .map(|li| paybank_payments::InvoiceLineItem {
+                name: li.name.clone(),
+                quantity: li.quantity,
+                unit_amount: li.unit_amount,
+            })
+            .collect(),
+        _ => {
+            let amount = req.amount.unwrap_or(0);
+            if amount < 1 {
+                return Err(AppError::BadRequest(
+                    "amount (cents) or line_items required".into(),
+                ));
+            }
+            vec![paybank_payments::InvoiceLineItem {
+                name: req
+                    .description
+                    .clone()
+                    .unwrap_or_else(|| "Invoice".to_string()),
+                quantity: 1,
+                unit_amount: amount,
+            }]
+        }
+    };
+
+    let created = paybank_payments::create_invoice(
+        name,
+        email,
+        "USD",
+        req.due_date.as_deref(),
+        req.description.as_deref(),
+        &items,
+    )
+    .await?;
+
+    let id = Uuid::new_v4();
+    let due = req
+        .due_date
+        .as_deref()
+        .and_then(|s| chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").ok());
+
+    sqlx::query(
+        "INSERT INTO invoices (id, merchant_id, mt_invoice_id, mt_counterparty_id, number, \
+         customer_name, customer_email, description, amount_cents, currency, status, hosted_url, due_date) \
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'USD',$10,$11,$12)",
+    )
+    .bind(id)
+    .bind(merchant_id)
+    .bind(&created.mt_invoice_id)
+    .bind(&created.mt_counterparty_id)
+    .bind(&created.number)
+    .bind(name)
+    .bind(email)
+    .bind(&req.description)
+    .bind(created.total_amount)
+    .bind(&created.status)
+    .bind(&created.hosted_url)
+    .bind(due)
+    .execute(&state.db.pool)
+    .await?;
+
+    Ok(Json(serde_json::json!({
+        "id": id,
+        "number": created.number,
+        "status": created.status,
+        "amount": created.total_amount,
+        "currency": "USD",
+        "hosted_url": created.hosted_url,
+    })))
+}
+
+fn invoice_row_json(row: &sqlx::postgres::PgRow) -> serde_json::Value {
+    serde_json::json!({
+        "id": row.try_get::<Uuid, _>("id").ok(),
+        "number": row.try_get::<Option<String>, _>("number").ok().flatten(),
+        "customer_name": row.try_get::<String, _>("customer_name").unwrap_or_default(),
+        "customer_email": row.try_get::<String, _>("customer_email").unwrap_or_default(),
+        "amount": row.try_get::<i64, _>("amount_cents").unwrap_or(0),
+        "currency": row.try_get::<String, _>("currency").unwrap_or_else(|_| "USD".into()),
+        "status": row.try_get::<String, _>("status").unwrap_or_default(),
+        "hosted_url": row.try_get::<Option<String>, _>("hosted_url").ok().flatten(),
+        "created_at": row.try_get::<chrono::DateTime<chrono::Utc>, _>("created_at").ok(),
+    })
+}
+
+pub async fn list_invoices(
+    State(state): State<AppState>,
+    Extension(AuthedMerchant(merchant_id)): Extension<AuthedMerchant>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let rows = sqlx::query(
+        "SELECT id, number, customer_name, customer_email, amount_cents, currency, status, \
+         hosted_url, created_at FROM invoices WHERE merchant_id = $1 ORDER BY created_at DESC LIMIT 100",
+    )
+    .bind(merchant_id)
+    .fetch_all(&state.db.pool)
+    .await?;
+    let invoices: Vec<serde_json::Value> = rows.iter().map(invoice_row_json).collect();
+    Ok(Json(serde_json::json!({ "invoices": invoices })))
+}
+
+pub async fn get_invoice(
+    State(state): State<AppState>,
+    Extension(AuthedMerchant(merchant_id)): Extension<AuthedMerchant>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let row = sqlx::query(
+        "SELECT id, mt_invoice_id, number, customer_name, customer_email, amount_cents, currency, \
+         status, hosted_url, created_at FROM invoices WHERE id = $1 AND merchant_id = $2",
+    )
+    .bind(id)
+    .bind(merchant_id)
+    .fetch_optional(&state.db.pool)
+    .await?
+    .ok_or(AppError::PaymentNotFound)?;
+
+    // Best-effort status refresh from MT.
+    if let Some(mt_id) = row
+        .try_get::<Option<String>, _>("mt_invoice_id")
+        .ok()
+        .flatten()
+    {
+        if let Ok(latest) = paybank_payments::invoice_status(&mt_id).await {
+            let cur: String = row.try_get("status").unwrap_or_default();
+            if latest != cur {
+                let _ = sqlx::query(
+                    "UPDATE invoices SET status = $1, updated_at = NOW() WHERE id = $2",
+                )
+                .bind(&latest)
+                .bind(id)
+                .execute(&state.db.pool)
+                .await;
+                let mut j = invoice_row_json(&row);
+                j["status"] = serde_json::Value::String(latest);
+                return Ok(Json(j));
+            }
+        }
+    }
+    Ok(Json(invoice_row_json(&row)))
+}
+
 // ── Merchant bank account (Phase 1: onboard via MT, no Plaid) ───────────────
 #[derive(Deserialize)]
 pub struct AddBankAccountRequest {

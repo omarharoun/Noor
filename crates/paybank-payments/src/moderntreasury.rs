@@ -302,6 +302,174 @@ pub async fn get_external_account_status(external_account_id: &str) -> Result<St
     Ok(s.verification_status.unwrap_or_else(|| "unverified".into()))
 }
 
+// ── Invoicing (Phase 2: MT Invoices issues + hosts the pay page) ────────────
+#[derive(Debug, Serialize)]
+struct MtInvoiceLineItem {
+    name: String,
+    quantity: i64,
+    unit_amount: i64,
+}
+#[derive(Debug, Serialize)]
+struct MtContactDetail {
+    contact_identifier: String,
+    contact_identifier_type: String,
+}
+#[derive(Debug, Serialize)]
+struct MtCounterpartyEmailReq {
+    name: String,
+    email: String,
+}
+#[derive(Debug, Serialize)]
+struct MtInvoiceReq {
+    originating_account_id: String,
+    counterparty_id: String,
+    currency: String,
+    auto_advance: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    due_date: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    description: Option<String>,
+    contact_details: Vec<MtContactDetail>,
+    invoice_line_items: Vec<MtInvoiceLineItem>,
+}
+#[derive(Debug, Deserialize)]
+pub struct InvoiceResponse {
+    pub id: String,
+    pub status: String,
+    pub total_amount: i64,
+    #[serde(default)]
+    pub number: Option<String>,
+    #[serde(default)]
+    pub hosted_url: Option<String>,
+}
+
+/// A single invoice line item (name, quantity, unit amount in cents).
+pub struct LineItem {
+    pub name: String,
+    pub quantity: i64,
+    pub unit_amount: i64,
+}
+
+/// Result of issuing an invoice: the MT ids + hosted pay URL.
+pub struct CreatedInvoice {
+    pub mt_invoice_id: String,
+    pub mt_counterparty_id: String,
+    pub number: Option<String>,
+    pub status: String,
+    pub total_amount: i64,
+    pub hosted_url: Option<String>,
+}
+
+/// Create a counterparty for the customer and issue an MT invoice
+/// (`auto_advance` posts it immediately so the hosted pay page is live).
+pub async fn create_invoice(
+    customer_name: &str,
+    customer_email: &str,
+    currency: &str,
+    due_date: Option<&str>,
+    description: Option<&str>,
+    line_items: &[LineItem],
+) -> Result<CreatedInvoice, AppError> {
+    let client = mt_client()?;
+    let originating = std::env::var("MT_INTERNAL_ACCOUNT_ID")
+        .map_err(|_| AppError::ModernTreasuryError("MT_INTERNAL_ACCOUNT_ID not set".into()))?;
+
+    // Customer counterparty (needs an email for the hosted invoice).
+    let cp_resp = client
+        .post(format!("{}/counterparties", MT_BASE_URL))
+        .json(&MtCounterpartyEmailReq {
+            name: customer_name.to_string(),
+            email: customer_email.to_string(),
+        })
+        .send()
+        .await
+        .map_err(|e| AppError::ModernTreasuryError(e.to_string()))?;
+    if !cp_resp.status().is_success() {
+        let st = cp_resp.status();
+        let b = cp_resp.text().await.unwrap_or_default();
+        return Err(AppError::ModernTreasuryError(format!(
+            "invoice counterparty failed: HTTP {} - {}",
+            st, b
+        )));
+    }
+    let cp: CounterpartyResponse = cp_resp
+        .json()
+        .await
+        .map_err(|e| AppError::ModernTreasuryError(format!("parse counterparty: {}", e)))?;
+
+    let req = MtInvoiceReq {
+        originating_account_id: originating,
+        counterparty_id: cp.id.clone(),
+        currency: currency.to_string(),
+        auto_advance: true,
+        due_date: due_date.map(|s| s.to_string()),
+        description: description.map(|s| s.to_string()),
+        contact_details: vec![MtContactDetail {
+            contact_identifier: customer_email.to_string(),
+            contact_identifier_type: "email".to_string(),
+        }],
+        invoice_line_items: line_items
+            .iter()
+            .map(|li| MtInvoiceLineItem {
+                name: li.name.clone(),
+                quantity: li.quantity,
+                unit_amount: li.unit_amount,
+            })
+            .collect(),
+    };
+    let resp = client
+        .post(format!("{}/invoices", MT_BASE_URL))
+        .json(&req)
+        .send()
+        .await
+        .map_err(|e| AppError::ModernTreasuryError(e.to_string()))?;
+    if !resp.status().is_success() {
+        let st = resp.status();
+        let b = resp.text().await.unwrap_or_default();
+        return Err(AppError::ModernTreasuryError(format!(
+            "invoice create failed: HTTP {} - {}",
+            st, b
+        )));
+    }
+    let inv: InvoiceResponse = resp
+        .json()
+        .await
+        .map_err(|e| AppError::ModernTreasuryError(format!("parse invoice: {}", e)))?;
+    info!(
+        "MT invoice {} ({:?}) status {}",
+        inv.id, inv.number, inv.status
+    );
+    Ok(CreatedInvoice {
+        mt_invoice_id: inv.id,
+        mt_counterparty_id: cp.id,
+        number: inv.number,
+        status: inv.status,
+        total_amount: inv.total_amount,
+        hosted_url: inv.hosted_url,
+    })
+}
+
+/// Fetch the current status of an MT invoice (e.g. unpaid → paid).
+pub async fn get_invoice_status(invoice_id: &str) -> Result<String, AppError> {
+    let client = mt_client()?;
+    let resp = client
+        .get(format!("{}/invoices/{}", MT_BASE_URL, invoice_id))
+        .send()
+        .await
+        .map_err(|e| AppError::ModernTreasuryError(e.to_string()))?;
+    if !resp.status().is_success() {
+        return Err(AppError::ModernTreasuryError(format!(
+            "get invoice failed: HTTP {}",
+            resp.status()
+        )));
+    }
+    let inv: InvoiceResponse = resp
+        .json()
+        .await
+        .map_err(|e| AppError::ModernTreasuryError(format!("parse invoice: {}", e)))?;
+    Ok(inv.status)
+}
+
 pub async fn create_transfer(
     internal_account_id: &str,
     counterparty_id: &str,

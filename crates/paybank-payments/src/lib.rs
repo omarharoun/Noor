@@ -94,6 +94,34 @@ pub async fn merchant_bank_account_status(external_account_id: &str) -> Result<S
     moderntreasury::get_external_account_status(external_account_id).await
 }
 
+pub use moderntreasury::{CreatedInvoice, LineItem as InvoiceLineItem};
+
+/// Issue an invoice via Modern Treasury (creates the customer counterparty +
+/// posts the invoice so the hosted pay page is live).
+pub async fn create_invoice(
+    customer_name: &str,
+    customer_email: &str,
+    currency: &str,
+    due_date: Option<&str>,
+    description: Option<&str>,
+    line_items: &[InvoiceLineItem],
+) -> Result<CreatedInvoice, AppError> {
+    moderntreasury::create_invoice(
+        customer_name,
+        customer_email,
+        currency,
+        due_date,
+        description,
+        line_items,
+    )
+    .await
+}
+
+/// Poll MT for an invoice's current status (unpaid → paid, etc.).
+pub async fn invoice_status(invoice_id: &str) -> Result<String, AppError> {
+    moderntreasury::get_invoice_status(invoice_id).await
+}
+
 pub async fn initiate_transfer(
     session_id: uuid::Uuid,
     counterparty_id: &str,

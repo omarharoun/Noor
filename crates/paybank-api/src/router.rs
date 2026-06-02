@@ -180,6 +180,14 @@ pub fn build_router(state: AppState) -> Router {
             get(routes::merchant_api::get_bank_account)
                 .post(routes::merchant_api::add_bank_account),
         )
+        .route(
+            "/api/merchant-api/invoices",
+            get(routes::merchant_api::list_invoices).post(routes::merchant_api::create_invoice),
+        )
+        .route(
+            "/api/merchant-api/invoices/:id",
+            get(routes::merchant_api::get_invoice),
+        )
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             auth::merchant_auth,
