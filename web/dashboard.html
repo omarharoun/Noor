@@ -150,6 +150,7 @@ pre{background:var(--cream-deep);border:1px solid var(--border);border-radius:va
     <button class="nav-item active" data-tab="overview"><i data-lucide="layout-dashboard"></i>Overview</button>
     <button class="nav-item" data-tab="payments"><i data-lucide="receipt"></i>Payments</button>
     <button class="nav-item" data-tab="create"><i data-lucide="plus-circle"></i>Payment link</button>
+    <button class="nav-item" data-tab="bank"><i data-lucide="landmark"></i>Bank account</button>
     <div class="sidebar-foot">
       <div class="brand-divider"></div>
       <div class="foot-user"><span class="avatar" style="width:32px;height:32px;font-size:12px">M</span><div><div class="nm" id="foot-name">Merchant</div><div class="em">Business account</div></div></div>
@@ -167,6 +168,7 @@ pre{background:var(--cream-deep);border:1px solid var(--border);border-radius:va
       <div id="section-overview" class="section active"></div>
       <div id="section-payments" class="section"></div>
       <div id="section-create" class="section"></div>
+      <div id="section-bank" class="section"></div>
     </div>
   </div>
 </div>
@@ -186,6 +188,7 @@ const TITLES = {
   overview: ['Overview', 'Your balance and recent payment activity.'],
   payments: ['Payments', 'Settled and in-flight payments on your account.'],
   create:   ['Payment link', 'Create a hosted checkout link to collect a payment.'],
+  bank:     ['Bank account', 'Your settlement bank account — verified via Modern Treasury.'],
 };
 const fmt = (c) => '$' + ((c||0)/100).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
 const TONE = { settled:'success', completed:'success', processing:'info', pending:'warning', authorized:'neutral', failed:'danger', returned:'danger', reversed:'danger', expired:'danger' };
@@ -246,6 +249,7 @@ document.querySelectorAll('.nav-item').forEach(a => a.addEventListener('click', 
   if(tab==='overview') loadOverview();
   if(tab==='payments') loadPayments();
   if(tab==='create') renderCreate();
+  if(tab==='bank') loadBank();
 }));
 function switchTab(name){ document.querySelector(`.nav-item[data-tab="${name}"]`)?.click(); }
 
@@ -357,6 +361,64 @@ function renderCreate(){
       fetch('/api/sessions/'+out.id+'/qr').then(r=>r.text()).then(svg=>{const q=document.getElementById('qrcode-new');if(q)q.innerHTML=svg;}).catch(()=>{});
     }catch(e){ if(e.message!=='unauthorized') res.innerHTML = `<div class="flash error" style="margin-top:16px">${e.message}</div>`; }
     btn.disabled=false; btn.innerHTML='<i data-lucide="plus" style="width:15px;height:15px"></i>Create link'; icons();
+  });
+}
+
+/* ---------- bank account ---------- */
+const BANK_TONE = { verified:'success', pending_verification:'info', unverified:'warning', denied:'danger', none:'neutral' };
+const BANK_LABEL = { verified:'Verified', pending_verification:'Verifying (prenote sent)', unverified:'Unverified', denied:'Denied', none:'Not set' };
+async function loadBank(){
+  const el = document.getElementById('section-bank');
+  el.innerHTML = `<div class="mcard"><div class="mcard-body"><div class="empty"><div class="spinner"></div></div></div></div>`;
+  try{
+    const b = await api('/api/merchant-api/bank-account');
+    if (b.has_account){
+      const st = b.status || 'unverified';
+      el.innerHTML = `<div class="mcard"><div class="mcard-head"><h2 class="mcard-title">Settlement bank account</h2>${badgeBank(st)}</div>
+        <div class="mcard-body">
+          <dl class="dgrid" style="max-width:420px">
+            <dt>Account</dt><dd>•••• ${b.last4||'????'}</dd>
+            <dt>Status</dt><dd>${BANK_LABEL[st]||st}</dd>
+            <dt>Verified via</dt><dd>Modern Treasury (ACH prenote)</dd>
+          </dl>
+          ${st==='pending_verification'?`<div class="flash info" style="margin-top:16px">A $0 prenote was sent to confirm the account. This clears in 1–3 business days; the status updates automatically.</div>`:''}
+          ${st==='verified'?`<div class="flash success" style="margin-top:16px">This account is verified and ready to receive settlements.</div>`:''}
+          <div class="form-actions" style="margin-top:16px"><button class="mbtn mbtn-secondary mbtn-sm" onclick="renderBankForm()"><i data-lucide="repeat" style="width:14px;height:14px"></i>Replace account</button></div>
+        </div></div>`;
+      icons();
+    } else {
+      renderBankForm();
+    }
+  }catch(e){ if(e.message!=='unauthorized') el.innerHTML=`<div class="mcard"><div class="mcard-body"><div class="flash error">${e.message}</div></div></div>`; }
+}
+function badgeBank(s){ return `<span class="mbadge tone-${BANK_TONE[s]||'neutral'}"><span class="mbadge-dot"></span>${BANK_LABEL[s]||s}</span>`; }
+function renderBankForm(){
+  const el = document.getElementById('section-bank');
+  el.innerHTML = `<div class="mcard"><div class="mcard-head"><h2 class="mcard-title">Add bank account</h2></div>
+    <div class="mcard-body"><form id="bankForm" style="max-width:520px">
+      <div class="field"><label>Account holder name</label><input id="b-holder" placeholder="Acme LLC"></div>
+      <div class="form-row">
+        <div class="field"><label>Account type</label><select id="b-type"><option value="checking">Checking</option><option value="savings">Savings</option></select></div>
+        <div class="field"><label>Routing number (9 digits)</label><input id="b-routing" inputmode="numeric" placeholder="021000021"></div>
+      </div>
+      <div class="field"><label>Account number</label><input id="b-account" inputmode="numeric" placeholder="123456789"></div>
+      <div class="flash info">Your bank details go directly to Modern Treasury to create and verify the account. Noor stores only the last 4 digits.</div>
+      <div class="form-actions"><button class="mbtn mbtn-primary mbtn-md" type="submit"><i data-lucide="landmark" style="width:15px;height:15px"></i>Add & verify</button></div>
+    </form><div id="bank-result"></div></div></div>`;
+  icons();
+  document.getElementById('bankForm').addEventListener('submit', async e=>{
+    e.preventDefault();
+    const btn=e.target.querySelector('button'); btn.disabled=true; btn.innerHTML='<span class="spinner" style="width:15px;height:15px;border-width:2px"></span> Submitting…';
+    const res=document.getElementById('bank-result');
+    try{
+      await api('/api/merchant-api/bank-account', { method:'POST', body: JSON.stringify({
+        account_holder_name: document.getElementById('b-holder').value.trim(),
+        account_type: document.getElementById('b-type').value,
+        routing_number: document.getElementById('b-routing').value.trim(),
+        account_number: document.getElementById('b-account').value.trim(),
+      })});
+      loadBank();
+    }catch(e){ if(e.message!=='unauthorized') res.innerHTML=`<div class="flash error" style="margin-top:14px">${e.message}</div>`; btn.disabled=false; btn.innerHTML='<i data-lucide="landmark" style="width:15px;height:15px"></i>Add & verify'; icons(); }
   });
 }
 

@@ -152,6 +152,156 @@ pub async fn create_counterparty(
     Ok((counterparty.id, external_account_id))
 }
 
+// ── Merchant bank-account onboarding (Phase 1: direct entry, no Plaid) ──────
+#[derive(Debug, Serialize)]
+struct MtAcctDetail {
+    account_number: String,
+}
+#[derive(Debug, Serialize)]
+struct MtRoutingDetail {
+    routing_number: String,
+    routing_number_type: String,
+    payment_type: String,
+}
+#[derive(Debug, Serialize)]
+struct MtMerchantAccount {
+    account_type: String,
+    party_name: String,
+    party_type: String,
+    account_details: Vec<MtAcctDetail>,
+    routing_details: Vec<MtRoutingDetail>,
+}
+#[derive(Debug, Serialize)]
+struct MtMerchantCounterpartyReq {
+    name: String,
+    accounts: Vec<MtMerchantAccount>,
+}
+#[derive(Debug, Deserialize)]
+struct ExtAcctStatusResp {
+    #[serde(default)]
+    verification_status: Option<String>,
+}
+#[derive(Debug, Serialize)]
+struct VerifyReq {
+    originating_account_id: String,
+    payment_type: String,
+}
+
+/// Create an MT counterparty + external account from manually-entered bank
+/// details. Returns (counterparty_id, external_account_id).
+pub async fn create_merchant_bank_account(
+    business_name: &str,
+    account_holder: &str,
+    account_type: &str,
+    routing_number: &str,
+    account_number: &str,
+) -> Result<(String, String), AppError> {
+    let client = mt_client()?;
+    let req = MtMerchantCounterpartyReq {
+        name: business_name.to_string(),
+        accounts: vec![MtMerchantAccount {
+            account_type: account_type.to_string(),
+            party_name: account_holder.to_string(),
+            party_type: "business".to_string(),
+            account_details: vec![MtAcctDetail {
+                account_number: account_number.to_string(),
+            }],
+            routing_details: vec![MtRoutingDetail {
+                routing_number: routing_number.to_string(),
+                routing_number_type: "aba".to_string(),
+                payment_type: "ach".to_string(),
+            }],
+        }],
+    };
+    let resp = client
+        .post(format!("{}/counterparties", MT_BASE_URL))
+        .json(&req)
+        .send()
+        .await
+        .map_err(|e| AppError::ModernTreasuryError(e.to_string()))?;
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        return Err(AppError::ModernTreasuryError(format!(
+            "merchant counterparty create failed: HTTP {} - {}",
+            status, body
+        )));
+    }
+    let cp: CounterpartyResponse = resp.json().await.map_err(|e| {
+        AppError::ModernTreasuryError(format!("parse merchant counterparty: {}", e))
+    })?;
+    let ext =
+        cp.accounts.first().map(|a| a.id.clone()).ok_or_else(|| {
+            AppError::ModernTreasuryError("MT returned no external account".into())
+        })?;
+    info!(
+        "MT merchant counterparty {} external account {}",
+        cp.id, ext
+    );
+    Ok((cp.id, ext))
+}
+
+/// Kick off ACH prenote verification for an external account. Returns the
+/// verification_status MT reports (typically `pending_verification`).
+pub async fn verify_external_account_prenote(
+    external_account_id: &str,
+) -> Result<String, AppError> {
+    let client = mt_client()?;
+    let originating = std::env::var("MT_INTERNAL_ACCOUNT_ID")
+        .map_err(|_| AppError::ModernTreasuryError("MT_INTERNAL_ACCOUNT_ID not set".into()))?;
+    let req = VerifyReq {
+        originating_account_id: originating,
+        payment_type: "ach".into(),
+    };
+    let resp = client
+        .post(format!(
+            "{}/external_accounts/{}/verify",
+            MT_BASE_URL, external_account_id
+        ))
+        .json(&req)
+        .send()
+        .await
+        .map_err(|e| AppError::ModernTreasuryError(e.to_string()))?;
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        return Err(AppError::ModernTreasuryError(format!(
+            "external account verify failed: HTTP {} - {}",
+            status, body
+        )));
+    }
+    let s: ExtAcctStatusResp = resp
+        .json()
+        .await
+        .map_err(|e| AppError::ModernTreasuryError(format!("parse verify: {}", e)))?;
+    Ok(s.verification_status
+        .unwrap_or_else(|| "pending_verification".into()))
+}
+
+/// Read the current verification_status of an external account from MT.
+pub async fn get_external_account_status(external_account_id: &str) -> Result<String, AppError> {
+    let client = mt_client()?;
+    let resp = client
+        .get(format!(
+            "{}/external_accounts/{}",
+            MT_BASE_URL, external_account_id
+        ))
+        .send()
+        .await
+        .map_err(|e| AppError::ModernTreasuryError(e.to_string()))?;
+    if !resp.status().is_success() {
+        return Err(AppError::ModernTreasuryError(format!(
+            "get external account failed: HTTP {}",
+            resp.status()
+        )));
+    }
+    let s: ExtAcctStatusResp = resp
+        .json()
+        .await
+        .map_err(|e| AppError::ModernTreasuryError(format!("parse external account: {}", e)))?;
+    Ok(s.verification_status.unwrap_or_else(|| "unverified".into()))
+}
+
 pub async fn create_transfer(
     internal_account_id: &str,
     counterparty_id: &str,

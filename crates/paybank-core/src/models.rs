@@ -190,6 +190,15 @@ pub struct Merchant {
     pub kyc_status: String,
     pub risk_level: Option<String>,
     pub onboarding_completed_at: Option<DateTime<Utc>>,
+    // MT-backed bank account (Phase 1: merchant onboards their own account).
+    #[serde(default)]
+    pub mt_counterparty_id: Option<String>,
+    #[serde(default)]
+    pub mt_external_account_id: Option<String>,
+    #[serde(default)]
+    pub bank_account_status: Option<String>,
+    #[serde(default)]
+    pub bank_account_last4: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

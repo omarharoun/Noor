@@ -7,6 +7,7 @@ use paybank_core::AppError;
 use paybank_core::PaymentRail;
 use paybank_db::{bank_repo, session_repo, transaction_repo};
 use serde::{Deserialize, Serialize};
+use sqlx::Row;
 use uuid::Uuid;
 
 #[derive(Serialize)]
@@ -106,6 +107,121 @@ pub struct CreatePaymentLinkRequest {
 pub struct CreatePaymentLinkResponse {
     pub checkout_url: String,
     pub id: Uuid,
+}
+
+// ── Merchant bank account (Phase 1: onboard via MT, no Plaid) ───────────────
+#[derive(Deserialize)]
+pub struct AddBankAccountRequest {
+    pub account_holder_name: String,
+    pub account_type: String, // checking | savings
+    pub routing_number: String,
+    pub account_number: String,
+}
+
+/// Add (or replace) the merchant's payout/settlement bank account. Sends the
+/// details to Modern Treasury to create the counterparty + external account and
+/// starts ACH prenote verification. Raw numbers are not stored in Noor — only
+/// the MT ids, the verification status, and a masked last-4.
+pub async fn add_bank_account(
+    State(state): State<AppState>,
+    Extension(AuthedMerchant(merchant_id)): Extension<AuthedMerchant>,
+    Json(req): Json<AddBankAccountRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let holder = req.account_holder_name.trim();
+    let routing = req.routing_number.trim();
+    let account = req.account_number.trim();
+    let acct_type = req.account_type.trim().to_lowercase();
+
+    if holder.is_empty() {
+        return Err(AppError::BadRequest(
+            "account holder name is required".into(),
+        ));
+    }
+    if routing.len() != 9 || !routing.chars().all(|c| c.is_ascii_digit()) {
+        return Err(AppError::BadRequest(
+            "routing number must be 9 digits".into(),
+        ));
+    }
+    if account.len() < 4 || account.len() > 17 || !account.chars().all(|c| c.is_ascii_digit()) {
+        return Err(AppError::BadRequest(
+            "account number must be 4–17 digits".into(),
+        ));
+    }
+    if acct_type != "checking" && acct_type != "savings" {
+        return Err(AppError::BadRequest(
+            "account type must be checking or savings".into(),
+        ));
+    }
+
+    let (cp_id, ext_id, status) = paybank_payments::onboard_merchant_bank_account(
+        holder, holder, &acct_type, routing, account,
+    )
+    .await?;
+
+    let last4 = account[account.len() - 4..].to_string();
+
+    sqlx::query(
+        "UPDATE merchants SET mt_counterparty_id = $1, mt_external_account_id = $2, \
+         bank_account_status = $3, bank_account_last4 = $4, updated_at = NOW() WHERE id = $5",
+    )
+    .bind(&cp_id)
+    .bind(&ext_id)
+    .bind(&status)
+    .bind(&last4)
+    .bind(merchant_id)
+    .execute(&state.db.pool)
+    .await?;
+
+    Ok(Json(serde_json::json!({
+        "status": status,
+        "last4": last4,
+        "account_type": acct_type,
+    })))
+}
+
+/// Return the merchant's bank-account status. If an account exists, polls MT for
+/// the latest verification status and persists any change.
+pub async fn get_bank_account(
+    State(state): State<AppState>,
+    Extension(AuthedMerchant(merchant_id)): Extension<AuthedMerchant>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let row = sqlx::query(
+        "SELECT mt_external_account_id, bank_account_status, bank_account_last4 \
+         FROM merchants WHERE id = $1",
+    )
+    .bind(merchant_id)
+    .fetch_one(&state.db.pool)
+    .await?;
+
+    let ext_id: Option<String> = row.try_get("mt_external_account_id").ok().flatten();
+    let mut status: Option<String> = row.try_get("bank_account_status").ok().flatten();
+    let last4: Option<String> = row.try_get("bank_account_last4").ok().flatten();
+
+    let Some(ext) = ext_id else {
+        return Ok(Json(
+            serde_json::json!({ "has_account": false, "status": "none" }),
+        ));
+    };
+
+    // Best-effort refresh from MT; if it changed, persist it.
+    if let Ok(latest) = paybank_payments::merchant_bank_account_status(&ext).await {
+        if Some(&latest) != status.as_ref() {
+            let _ = sqlx::query(
+                "UPDATE merchants SET bank_account_status = $1, updated_at = NOW() WHERE id = $2",
+            )
+            .bind(&latest)
+            .bind(merchant_id)
+            .execute(&state.db.pool)
+            .await;
+            status = Some(latest);
+        }
+    }
+
+    Ok(Json(serde_json::json!({
+        "has_account": true,
+        "status": status.unwrap_or_else(|| "unverified".into()),
+        "last4": last4,
+    })))
 }
 
 pub async fn create_payment_link(

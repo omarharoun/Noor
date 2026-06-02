@@ -62,6 +62,38 @@ pub async fn create_counterparty(
     }
 }
 
+/// Onboard a merchant's own bank account via Modern Treasury (Phase 1, no
+/// Plaid): create the counterparty + external account from manually-entered
+/// details, then kick off ACH prenote verification. Returns
+/// (counterparty_id, external_account_id, verification_status).
+pub async fn onboard_merchant_bank_account(
+    business_name: &str,
+    account_holder: &str,
+    account_type: &str,
+    routing_number: &str,
+    account_number: &str,
+) -> Result<(String, String, String), AppError> {
+    let (cp, ext) = moderntreasury::create_merchant_bank_account(
+        business_name,
+        account_holder,
+        account_type,
+        routing_number,
+        account_number,
+    )
+    .await?;
+    // Verification is best-effort: the account is created even if the prenote
+    // call fails (e.g. internal account not configured) — status stays unverified.
+    let status = moderntreasury::verify_external_account_prenote(&ext)
+        .await
+        .unwrap_or_else(|_| "unverified".to_string());
+    Ok((cp, ext, status))
+}
+
+/// Poll MT for the current verification status of a merchant's external account.
+pub async fn merchant_bank_account_status(external_account_id: &str) -> Result<String, AppError> {
+    moderntreasury::get_external_account_status(external_account_id).await
+}
+
 pub async fn initiate_transfer(
     session_id: uuid::Uuid,
     counterparty_id: &str,

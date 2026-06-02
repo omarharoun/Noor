@@ -175,6 +175,11 @@ pub fn build_router(state: AppState) -> Router {
             "/api/merchant-api/payment_links",
             post(routes::merchant_api::create_payment_link),
         )
+        .route(
+            "/api/merchant-api/bank-account",
+            get(routes::merchant_api::get_bank_account)
+                .post(routes::merchant_api::add_bank_account),
+        )
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             auth::merchant_auth,
