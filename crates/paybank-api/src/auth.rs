@@ -243,29 +243,259 @@ pub async fn admin_auth(
     Ok(next.run(req).await)
 }
 
-/// Gate `/api/merchant-api/*` on a valid merchant API key and inject the merchant id.
+/// Gate `/api/merchant-api/*`. Accepts EITHER a merchant API key (x-api-key, or
+/// a bearer that isn't a JWT) for programmatic access, OR a merchant-user JWT
+/// (bearer) issued by `merchant_login` for the dashboard. Injects
+/// `AuthedMerchant` always, and `AuthedMerchantUser` when a user token is used.
 pub async fn merchant_auth(
     State(state): State<AppState>,
     mut req: Request,
     next: Next,
 ) -> Result<Response, AppError> {
-    let key = req
+    // 1. Explicit API key wins.
+    let api_key = req
         .headers()
         .get("x-api-key")
         .and_then(|v| v.to_str().ok())
-        .map(|s| s.to_string())
-        .or_else(|| bearer(&req).map(|s| s.to_string()))
-        .ok_or(AppError::Unauthorized)?;
+        .map(|s| s.to_string());
 
+    // 2. A bearer token may be a merchant-user JWT or (legacy) an API key.
+    if api_key.is_none() {
+        if let Some(tok) = bearer(&req).map(|s| s.to_string()) {
+            if let Ok(claims) = decode_merchant_token(&state.config, &tok) {
+                let merchant_id =
+                    Uuid::parse_str(&claims.merchant_id).map_err(|_| AppError::Unauthorized)?;
+                let user_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Unauthorized)?;
+                req.extensions_mut().insert(AuthedMerchantUser {
+                    user_id,
+                    merchant_id,
+                    email: claims.email,
+                    role: claims.role,
+                });
+                req.extensions_mut().insert(AuthedMerchant(merchant_id));
+                return Ok(next.run(req).await);
+            }
+            return resolve_api_key(&state, &tok, req, next).await;
+        }
+        return Err(AppError::Unauthorized);
+    }
+    resolve_api_key(&state, &api_key.unwrap(), req, next).await
+}
+
+async fn resolve_api_key(
+    state: &AppState,
+    key: &str,
+    mut req: Request,
+    next: Next,
+) -> Result<Response, AppError> {
     // Runtime query (not the query! macro) so adding auth needs no offline-cache regen.
     let merchant: Option<Merchant> =
         sqlx::query_as::<_, Merchant>("SELECT * FROM merchants WHERE api_key = $1")
-            .bind(&key)
+            .bind(key)
             .fetch_optional(&state.db.pool)
             .await
             .map_err(|e| AppError::Internal(anyhow::anyhow!(e)))?;
-
     let merchant = merchant.ok_or(AppError::Unauthorized)?;
     req.extensions_mut().insert(AuthedMerchant(merchant.id));
     Ok(next.run(req).await)
+}
+
+// ---- Merchant users (Phase 3a): multi-user accounts with roles ------------
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MerchantClaims {
+    pub sub: String, // merchant_user id
+    pub merchant_id: String,
+    pub email: String,
+    pub name: String,
+    pub role: String,
+    pub exp: usize,
+}
+
+/// Authenticated merchant USER (from a merchant-user JWT), injected by
+/// `merchant_auth` when a user token is presented.
+#[derive(Clone)]
+pub struct AuthedMerchantUser {
+    pub user_id: Uuid,
+    pub merchant_id: Uuid,
+    pub email: String,
+    pub role: String,
+}
+
+impl AuthedMerchantUser {
+    /// Roles allowed to approve payouts / manage users.
+    pub fn can_approve(&self) -> bool {
+        self.role == "owner" || self.role == "admin"
+    }
+}
+
+/// Extractor: requires a merchant-USER token (not just an API key). Returns 401
+/// when the request authenticated with an API key (no user identity) or not at all.
+#[axum::async_trait]
+impl<S: Send + Sync> axum::extract::FromRequestParts<S> for AuthedMerchantUser {
+    type Rejection = AppError;
+    async fn from_request_parts(
+        parts: &mut axum::http::request::Parts,
+        _state: &S,
+    ) -> Result<Self, Self::Rejection> {
+        parts
+            .extensions
+            .get::<AuthedMerchantUser>()
+            .cloned()
+            .ok_or(AppError::Unauthorized)
+    }
+}
+
+fn issue_merchant_token(
+    config: &crate::state::Config,
+    user: &paybank_core::MerchantUser,
+) -> Result<String, AppError> {
+    let exp = (chrono::Utc::now().timestamp() + TOKEN_TTL_SECS) as usize;
+    let claims = MerchantClaims {
+        sub: user.id.to_string(),
+        merchant_id: user.merchant_id.to_string(),
+        email: user.email.clone(),
+        name: user.name.clone(),
+        role: user.role.clone(),
+        exp,
+    };
+    encode(
+        &Header::default(),
+        &claims,
+        &EncodingKey::from_secret(config.jwt_secret.as_bytes()),
+    )
+    .map_err(|e| AppError::AuthError(format!("token signing failed: {e}")))
+}
+
+fn decode_merchant_token(
+    config: &crate::state::Config,
+    token: &str,
+) -> Result<MerchantClaims, AppError> {
+    decode::<MerchantClaims>(
+        token,
+        &DecodingKey::from_secret(config.jwt_secret.as_bytes()),
+        &Validation::default(),
+    )
+    .map(|d| d.claims)
+    .map_err(|_| AppError::Unauthorized)
+}
+
+#[derive(Serialize)]
+pub struct MerchantUserView {
+    pub id: Uuid,
+    pub email: String,
+    pub name: String,
+    pub role: String,
+    pub is_active: bool,
+}
+
+impl From<paybank_core::MerchantUser> for MerchantUserView {
+    fn from(u: paybank_core::MerchantUser) -> Self {
+        MerchantUserView {
+            id: u.id,
+            email: u.email,
+            name: u.name,
+            role: u.role,
+            is_active: u.is_active,
+        }
+    }
+}
+
+#[derive(Serialize)]
+pub struct MerchantLoginResponse {
+    pub token: String,
+    pub user: MerchantUserView,
+}
+
+/// Merchant-user login (email + password) → JWT for the merchant dashboard.
+pub async fn merchant_login(
+    State(state): State<AppState>,
+    Json(body): Json<LoginBody>,
+) -> Result<Json<MerchantLoginResponse>, AppError> {
+    {
+        let mut map = state.login_throttle.lock().unwrap();
+        let now = std::time::Instant::now();
+        let entry = map.entry(format!("mu:{}", body.email)).or_insert((0, now));
+        if now.duration_since(entry.1).as_secs() > LOGIN_WINDOW_SECS {
+            *entry = (0, now);
+        }
+        if entry.0 >= LOGIN_MAX_ATTEMPTS {
+            return Err(AppError::TooManyRequests);
+        }
+        entry.0 += 1;
+    }
+
+    let user: Option<paybank_core::MerchantUser> = sqlx::query_as::<_, paybank_core::MerchantUser>(
+        "SELECT * FROM merchant_users WHERE email = $1",
+    )
+    .bind(&body.email)
+    .fetch_optional(&state.db.pool)
+    .await
+    .map_err(|e| AppError::Internal(anyhow::anyhow!(e)))?;
+
+    let valid = match &user {
+        Some(u) if u.is_active => verify_password(&body.password, &u.password_hash),
+        _ => {
+            let _ = verify_password(&body.password, dummy_hash());
+            false
+        }
+    };
+    if !valid {
+        return Err(AppError::Unauthorized);
+    }
+    let u = user.expect("valid implies Some");
+    state
+        .login_throttle
+        .lock()
+        .unwrap()
+        .remove(&format!("mu:{}", body.email));
+    let token = issue_merchant_token(&state.config, &u)?;
+    Ok(Json(MerchantLoginResponse {
+        token,
+        user: u.into(),
+    }))
+}
+
+pub async fn merchant_me(
+    State(state): State<AppState>,
+    req: Request,
+) -> Result<Json<MerchantUserView>, AppError> {
+    let token = bearer(&req).ok_or(AppError::Unauthorized)?;
+    let claims = decode_merchant_token(&state.config, token)?;
+    Ok(Json(MerchantUserView {
+        id: Uuid::parse_str(&claims.sub).map_err(|_| AppError::Unauthorized)?,
+        email: claims.email,
+        name: claims.name,
+        role: claims.role,
+        is_active: true,
+    }))
+}
+
+/// Create a merchant user (Argon2). Shared by the operator bootstrap path and
+/// the merchant-side invite. `role` ∈ {owner, admin, member}.
+pub async fn create_merchant_user(
+    pool: &PgPool,
+    merchant_id: Uuid,
+    email: &str,
+    name: &str,
+    password: &str,
+    role: &str,
+) -> Result<paybank_core::MerchantUser, AppError> {
+    let role = match role {
+        "owner" | "admin" | "member" => role,
+        _ => "member",
+    };
+    let hash = hash_password(password)?;
+    sqlx::query_as::<_, paybank_core::MerchantUser>(
+        "INSERT INTO merchant_users (merchant_id, email, password_hash, name, role) \
+         VALUES ($1,$2,$3,$4,$5) RETURNING *",
+    )
+    .bind(merchant_id)
+    .bind(email)
+    .bind(&hash)
+    .bind(name)
+    .bind(role)
+    .fetch_one(pool)
+    .await
+    .map_err(|e| AppError::Internal(anyhow::anyhow!(e)))
 }

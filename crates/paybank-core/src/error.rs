@@ -9,6 +9,9 @@ pub enum AppError {
     #[error("{0}")]
     BadRequest(String),
 
+    #[error("forbidden: {0}")]
+    Forbidden(String),
+
     #[error("bank not found")]
     BankNotFound,
 
@@ -83,6 +86,7 @@ impl IntoResponse for AppError {
         let (status, message) = match &self {
             AppError::InvalidAmount => (StatusCode::BAD_REQUEST, self.to_string()),
             AppError::BadRequest(_) => (StatusCode::BAD_REQUEST, self.to_string()),
+            AppError::Forbidden(_) => (StatusCode::FORBIDDEN, self.to_string()),
             AppError::BankNotFound => (StatusCode::NOT_FOUND, self.to_string()),
             AppError::MerchantNotFound => (StatusCode::UNAUTHORIZED, self.to_string()),
             AppError::SessionNotFound => (StatusCode::NOT_FOUND, self.to_string()),

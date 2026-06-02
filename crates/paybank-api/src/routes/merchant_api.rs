@@ -109,6 +109,67 @@ pub struct CreatePaymentLinkResponse {
     pub id: Uuid,
 }
 
+// ── Merchant users (Phase 3a): list + invite, role-gated ───────────────────
+#[derive(Deserialize)]
+pub struct InviteUserRequest {
+    pub email: String,
+    pub name: String,
+    pub password: String,
+    pub role: Option<String>,
+}
+
+pub async fn list_users(
+    State(state): State<AppState>,
+    actor: crate::auth::AuthedMerchantUser,
+) -> Result<Json<serde_json::Value>, AppError> {
+    if !actor.can_approve() {
+        return Err(AppError::Forbidden("requires admin or owner".into()));
+    }
+    let users = sqlx::query_as::<_, paybank_core::MerchantUser>(
+        "SELECT * FROM merchant_users WHERE merchant_id = $1 ORDER BY created_at",
+    )
+    .bind(actor.merchant_id)
+    .fetch_all(&state.db.pool)
+    .await?;
+    let views: Vec<crate::auth::MerchantUserView> = users.into_iter().map(Into::into).collect();
+    Ok(Json(serde_json::json!({ "users": views })))
+}
+
+pub async fn invite_user(
+    State(state): State<AppState>,
+    actor: crate::auth::AuthedMerchantUser,
+    Json(req): Json<InviteUserRequest>,
+) -> Result<Json<crate::auth::MerchantUserView>, AppError> {
+    if !actor.can_approve() {
+        return Err(AppError::Forbidden("requires admin or owner".into()));
+    }
+    let email = req.email.trim();
+    if !email.contains('@') {
+        return Err(AppError::BadRequest("a valid email is required".into()));
+    }
+    if req.password.len() < 8 {
+        return Err(AppError::BadRequest(
+            "password must be at least 8 characters".into(),
+        ));
+    }
+    let role = req.role.as_deref().unwrap_or("member");
+    if role == "owner" && actor.role != "owner" {
+        return Err(AppError::Forbidden(
+            "only an owner can create another owner".into(),
+        ));
+    }
+    let user = crate::auth::create_merchant_user(
+        &state.db.pool,
+        actor.merchant_id,
+        email,
+        req.name.trim(),
+        &req.password,
+        role,
+    )
+    .await?;
+    Ok(Json(user.into()))
+}
+
 // ── Invoicing (Phase 2) ─────────────────────────────────────────────────────
 #[derive(Deserialize)]
 pub struct InvoiceLineItemInput {

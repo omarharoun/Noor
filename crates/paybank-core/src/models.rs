@@ -168,6 +168,22 @@ pub struct Bank {
     pub display_order: i32,
 }
 
+/// A named user belonging to a merchant (Phase 3a: multi-user + roles for
+/// dual-control payouts). Roles: owner > admin > member.
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct MerchantUser {
+    pub id: Uuid,
+    pub merchant_id: Uuid,
+    pub email: String,
+    #[serde(skip_serializing)]
+    pub password_hash: String,
+    pub name: String,
+    pub role: String,
+    pub is_active: bool,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct Merchant {
     pub id: Uuid,

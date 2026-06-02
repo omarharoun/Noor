@@ -134,6 +134,50 @@ pub async fn get_merchant(
     ))
 }
 
+#[derive(Deserialize)]
+pub struct CreateMerchantUserBody {
+    pub email: String,
+    pub name: String,
+    pub password: String,
+    pub role: Option<String>,
+}
+
+/// Operator onboards a merchant's first user (typically an `owner`). This is the
+/// bootstrap that lets a merchant then sign in and invite their own team.
+pub async fn create_merchant_user(
+    State(state): State<AppState>,
+    Extension(AuthedOperator(claims)): Extension<AuthedOperator>,
+    Path(merchant_id): Path<Uuid>,
+    Json(body): Json<CreateMerchantUserBody>,
+) -> Result<(StatusCode, Json<crate::auth::MerchantUserView>), AppError> {
+    if body.password.len() < 8 {
+        return Err(AppError::BadRequest(
+            "password must be at least 8 characters".into(),
+        ));
+    }
+    let role = body.role.as_deref().unwrap_or("owner");
+    let user = crate::auth::create_merchant_user(
+        &state.db.pool,
+        merchant_id,
+        body.email.trim(),
+        body.name.trim(),
+        &body.password,
+        role,
+    )
+    .await?;
+    audit_repo::record(
+        &state.db.pool,
+        &claims.sub,
+        Some(&claims.role),
+        "merchant_user.create",
+        Some("merchant_user"),
+        Some(&user.id.to_string()),
+        serde_json::json!({ "merchant_id": merchant_id, "role": role }),
+    )
+    .await;
+    Ok((StatusCode::CREATED, Json(user.into())))
+}
+
 pub async fn create_merchant(
     State(state): State<AppState>,
     Extension(AuthedOperator(claims)): Extension<AuthedOperator>,

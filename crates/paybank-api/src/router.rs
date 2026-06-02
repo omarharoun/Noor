@@ -122,6 +122,10 @@ pub fn build_router(state: AppState) -> Router {
             "/api/admin/operators/:id",
             axum::routing::patch(routes::admin::update_operator),
         )
+        .route(
+            "/api/admin/merchants/:id/users",
+            post(routes::admin::create_merchant_user),
+        )
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             auth::admin_auth,
@@ -188,6 +192,10 @@ pub fn build_router(state: AppState) -> Router {
             "/api/merchant-api/invoices/:id",
             get(routes::merchant_api::get_invoice),
         )
+        .route(
+            "/api/merchant-api/users",
+            get(routes::merchant_api::list_users).post(routes::merchant_api::invite_user),
+        )
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             auth::merchant_auth,
@@ -200,6 +208,8 @@ pub fn build_router(state: AppState) -> Router {
         .route("/health/ready", get(readiness))
         .route("/api/admin/login", post(auth::login))
         .route("/api/admin/me", get(auth::me))
+        .route("/api/merchant/login", post(auth::merchant_login))
+        .route("/api/merchant/me", get(auth::merchant_me))
         .route("/api/banks", get(routes::banks::list_banks))
         // Customer-facing, capability-scoped by the unguessable session UUID.
         // `get_session` returns a REDACTED view (no raw bank account/routing).
