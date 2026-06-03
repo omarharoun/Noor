@@ -7,21 +7,29 @@ a few Railway variables.
 
 ---
 
-## 0. The one prerequisite that isn't a config flag: a bank behind MT
+## 0. The one prerequisite that isn't a config flag: MT full-stack onboarding
 
-Modern Treasury is the orchestration layer — it does **not** hold funds, provide
-a charter, or grant rail access by itself. A **real bank account must be
-connected to your MT live organization**. Which arrangement you need depends on
-*whose money moves*:
+Going "all MT" is a real single-provider path. Modern Treasury's **Full-Stack
+PSP** product covers what a payments platform needs end-to-end:
 
-| Model | What you need | Sponsor bank / license? |
-|---|---|---|
-| **Your own money** — Noor collects *your* revenue and pays *your* vendors | Connect your business bank account to MT live | **No** — "all MT" is fine |
-| **Merchants' money** — merchants hold balances on Noor and you pay them out | A bank partner with FBO/for-benefit-of accounts; likely money-transmitter licensing | **Yes** — required regardless of MT |
+- **Bank relationships** — MT provides/manages the partner bank + accounts, so
+  you do **not** separately procure a sponsor bank.
+- **Compliance** — KYC/KYB, sanctions/OFAC screening, transaction monitoring
+  (this can power Noor's `compliance::gate`, replacing the stub).
+- **Payment orchestration** — the rails (ACH/wire/RTP/FedNow) Noor already calls.
+- **Ledgering** — MT offers it; Noor keeps its own Postgres double-entry ledger
+  as source of truth and reconciles against MT webhooks (no need to adopt MT
+  Ledgers).
 
-Pick the model before going live. The app code is identical either way; the
-legal/banking setup differs. (Noor's multi-merchant features exist, but you
-control whether you operate it as your-own-money or a funds-holding platform.)
+**What's still on you (not a config flag):** complete MT's **onboarding /
+underwriting** — your business KYB, your use case (incl. whether you hold
+*merchants'* funds and pay them out, which MT's compliance + partner-bank setup
+is designed to support), and expected volumes. MT approves the program and
+provisions the live organization + internal (bank) account. This is an
+application/review process with MT, not a flag you toggle — start it early.
+
+Once MT has approved and provisioned your live org + account, everything below
+is the config switch. The app code is identical to sandbox.
 
 ---
 
@@ -67,7 +75,9 @@ beyond that.
 - [ ] Each merchant has a **verified** bank account (prenote cleared) before payouts.
 - [ ] Confirm the live MT webhook **signature format** matches what we verify
       (`x-signature`, hex HMAC-SHA256 of the raw body) — see §6.
-- [ ] If holding merchant funds: bank-partner/FBO + compliance program in place (§0).
+- [ ] MT full-stack onboarding approved (bank + compliance provisioned by MT, §0).
+- [ ] Wire MT's compliance/KYB result into `compliance::gate` (replace the stub)
+      so the live authorize chokepoint reflects MT screening.
 
 ## 5. Verify after the switch
 
