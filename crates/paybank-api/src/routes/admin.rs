@@ -67,6 +67,50 @@ pub async fn list_all_invoices(
     Ok(Json(serde_json::json!({ "invoices": invoices })))
 }
 
+/// One-time maintenance: backfill `supported_rails` for payees onboarded before
+/// rail-aware routing existed. Looks up each payee's routing number on its MT
+/// external account, then asks MT which rails it supports. Idempotent — only
+/// touches rows with no cached rails — so it's safe to re-run.
+pub async fn backfill_payee_rails(
+    State(state): State<AppState>,
+    Extension(AuthedOperator(_claims)): Extension<AuthedOperator>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let rows = sqlx::query(
+        "SELECT id, mt_external_account_id FROM payees \
+         WHERE supported_rails IS NULL OR supported_rails = ''",
+    )
+    .fetch_all(&state.db.pool)
+    .await?;
+    let candidates = rows.len();
+    let mut updated = 0u32;
+    for r in &rows {
+        let id: Uuid = match r.try_get("id") {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        let ext: Option<String> = r.try_get("mt_external_account_id").ok().flatten();
+        let Some(ext) = ext.filter(|s| !s.is_empty()) else {
+            continue;
+        };
+        let Some(routing) = paybank_payments::external_account_routing(&ext).await else {
+            continue;
+        };
+        let rails = paybank_payments::supported_rails(&routing).await;
+        if rails.is_empty() {
+            continue;
+        }
+        let _ = sqlx::query("UPDATE payees SET supported_rails = $1 WHERE id = $2")
+            .bind(rails.join(","))
+            .bind(id)
+            .execute(&state.db.pool)
+            .await;
+        updated += 1;
+    }
+    Ok(Json(
+        serde_json::json!({ "candidates": candidates, "backfilled": updated }),
+    ))
+}
+
 /// Operator oversight: all wallet top-ups (deposits) across merchants.
 pub async fn list_all_deposits(
     State(state): State<AppState>,

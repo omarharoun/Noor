@@ -7,7 +7,7 @@ use paybank_core::{AppError, PaymentRail};
 use serde::{Deserialize, Serialize};
 
 pub use email::send_email;
-pub use moderntreasury::supported_rails;
+pub use moderntreasury::{external_account_routing, supported_rails};
 pub use rail::choose_rail;
 
 /// Pick the fastest payout rail Modern Treasury says a routing number supports.

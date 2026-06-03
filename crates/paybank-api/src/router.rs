@@ -116,6 +116,10 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/admin/payouts", get(routes::admin::list_all_payouts))
         .route("/api/admin/invoices", get(routes::admin::list_all_invoices))
         .route("/api/admin/deposits", get(routes::admin::list_all_deposits))
+        .route(
+            "/api/admin/payees/backfill-rails",
+            post(routes::admin::backfill_payee_rails),
+        )
         .route("/api/admin/audit", get(routes::admin::get_audit))
         .route(
             "/api/admin/operators",

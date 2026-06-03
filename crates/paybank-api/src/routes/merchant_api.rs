@@ -1422,6 +1422,33 @@ pub async fn create_invoice(
     )
     .await;
 
+    // Email the customer their invoice + hosted pay link — white-labeled, sent
+    // FROM noreply@norhadi.com TO the customer. Fire-and-forget so it never
+    // blocks the response; no-op until SENDGRID_API_KEY is set.
+    if let Some(url) = created.hosted_url.clone() {
+        let merch: String = sqlx::query(
+            "SELECT COALESCE(NULLIF(business_name, ''), name) AS dn FROM merchants WHERE id = $1",
+        )
+        .bind(merchant_id)
+        .fetch_optional(&state.db.pool)
+        .await
+        .ok()
+        .flatten()
+        .and_then(|r| r.try_get::<String, _>("dn").ok())
+        .unwrap_or_else(|| "Noor".to_string());
+        let to = email.to_string();
+        let cust = name.to_string();
+        let amount = created.total_amount as f64 / 100.0;
+        let num = created.number.clone().unwrap_or_default();
+        let subject = format!("Invoice {num} from {merch}");
+        let body = format!(
+            "Hi {cust},\n\n{merch} has sent you an invoice for ${amount:.2} (due {due_str}).\n\nPay securely here:\n{url}\n\nThank you,\n{merch}"
+        );
+        tokio::spawn(async move {
+            paybank_payments::send_email(&to, &subject, &body).await;
+        });
+    }
+
     Ok(Json(serde_json::json!({
         "id": id,
         "number": created.number,

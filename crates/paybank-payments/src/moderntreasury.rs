@@ -71,6 +71,27 @@ pub async fn supported_rails(routing_number: &str) -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// Read the ABA routing number off an existing MT external account. Used to
+/// backfill rail eligibility for payees onboarded before we cached it (we only
+/// keep last4 locally). Best-effort: None on any failure.
+pub async fn external_account_routing(external_account_id: &str) -> Option<String> {
+    let client = mt_client().ok()?;
+    let url = format!("{MT_BASE_URL}/external_accounts/{external_account_id}");
+    let resp = client.get(&url).send().await.ok()?;
+    if !resp.status().is_success() {
+        return None;
+    }
+    let body: serde_json::Value = resp.json().await.ok()?;
+    body.get("routing_details")?
+        .as_array()?
+        .iter()
+        .find_map(|d| {
+            d.get("routing_number")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+        })
+}
+
 #[derive(Debug, Serialize)]
 struct CreateCounterpartyRequest {
     name: String,
