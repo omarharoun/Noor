@@ -4,9 +4,41 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Noor Operations</title>
+    <script>
+      // Apply saved theme before paint to avoid a flash.
+      (function () {
+        try {
+          if (localStorage.getItem('noor_theme') === 'dark')
+            document.documentElement.setAttribute('data-theme', 'dark');
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="./src/main.tsx"></script>
+    <script>
+      // Floating theme toggle (framework-agnostic so it works on any route).
+      (function () {
+        function apply(dark) {
+          if (dark) document.documentElement.setAttribute('data-theme', 'dark');
+          else document.documentElement.removeAttribute('data-theme');
+          try { localStorage.setItem('noor_theme', dark ? 'dark' : 'light'); } catch (e) {}
+          btn.textContent = dark ? '☀' : '☾';
+        }
+        var btn = document.createElement('button');
+        btn.title = 'Toggle theme';
+        btn.style.cssText =
+          'position:fixed;right:18px;bottom:18px;z-index:9999;width:40px;height:40px;border-radius:999px;' +
+          'border:1px solid var(--border-strong);background:var(--surface);color:var(--ink);' +
+          'cursor:pointer;font-size:17px;box-shadow:var(--shadow-md);display:grid;place-items:center';
+        btn.textContent =
+          document.documentElement.getAttribute('data-theme') === 'dark' ? '☀' : '☾';
+        btn.addEventListener('click', function () {
+          apply(document.documentElement.getAttribute('data-theme') !== 'dark');
+        });
+        document.body.appendChild(btn);
+      })();
+    </script>
   </body>
 </html>

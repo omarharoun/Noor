@@ -343,6 +343,51 @@ pub async fn report_summary(
     })))
 }
 
+/// A chronological account statement: every credit/debit on the merchant's
+/// Settlement (liability) ledger account, with a running balance. This is the
+/// single source of truth for "what moved my balance" — collections, deposits,
+/// payouts, withdrawals, reversals all land here.
+pub async fn statement(
+    State(state): State<AppState>,
+    Extension(AuthedMerchant(merchant_id)): Extension<AuthedMerchant>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let rows = sqlx::query(
+        "SELECT je.description, je.entry_type, je.created_at, lp.direction, lp.amount_cents \
+         FROM ledger_postings lp \
+         JOIN ledger_accounts la ON la.id = lp.account_id \
+         JOIN journal_entries je ON je.id = lp.journal_entry_id \
+         WHERE la.merchant_id = $1 AND la.type = 'liability' \
+         ORDER BY je.created_at ASC, je.id ASC LIMIT 1000",
+    )
+    .bind(merchant_id)
+    .fetch_all(&state.db.pool)
+    .await?;
+
+    let mut balance: i64 = 0;
+    let mut entries: Vec<serde_json::Value> = Vec::with_capacity(rows.len());
+    for r in &rows {
+        let dir: String = r.try_get("direction").unwrap_or_default();
+        let amt: i64 = r.try_get("amount_cents").unwrap_or(0);
+        let delta = if dir == "credit" { amt } else { -amt };
+        balance += delta;
+        entries.push(serde_json::json!({
+            "date": r.try_get::<chrono::DateTime<chrono::Utc>,_>("created_at").ok(),
+            "description": r.try_get::<String,_>("description").unwrap_or_default(),
+            "type": r.try_get::<Option<String>,_>("entry_type").ok().flatten(),
+            "direction": dir,
+            "amount": amt,
+            "delta": delta,
+            "balance": balance,
+        }));
+    }
+    entries.reverse(); // newest first for display; each keeps its as-of balance
+    Ok(Json(serde_json::json!({
+        "closing_balance": balance,
+        "count": entries.len(),
+        "entries": entries,
+    })))
+}
+
 fn csv_escape(s: &str) -> String {
     if s.contains(',') || s.contains('"') || s.contains('\n') {
         format!("\"{}\"", s.replace('"', "\"\""))
@@ -433,6 +478,38 @@ pub async fn export_csv(
                 })
                 .collect();
             ("payee,amount,rail,status,date", rows)
+        }
+        "statement" => {
+            let recs = sqlx::query(
+                "SELECT je.description, je.created_at, lp.direction, lp.amount_cents \
+                 FROM ledger_postings lp JOIN ledger_accounts la ON la.id = lp.account_id \
+                 JOIN journal_entries je ON je.id = lp.journal_entry_id \
+                 WHERE la.merchant_id = $1 AND la.type = 'liability' \
+                 ORDER BY je.created_at ASC, je.id ASC LIMIT 10000",
+            )
+            .bind(merchant_id)
+            .fetch_all(pool)
+            .await?;
+            let mut bal: i64 = 0;
+            let rows = recs
+                .iter()
+                .map(|r| {
+                    let dir = r.try_get::<String, _>("direction").unwrap_or_default();
+                    let amt = r.try_get::<i64, _>("amount_cents").unwrap_or(0);
+                    bal += if dir == "credit" { amt } else { -amt };
+                    format!(
+                        "{},{},{},{:.2},{:.2}",
+                        r.try_get::<chrono::DateTime<chrono::Utc>, _>("created_at")
+                            .map(|d| d.format("%Y-%m-%d").to_string())
+                            .unwrap_or_default(),
+                        csv_escape(&r.try_get::<String, _>("description").unwrap_or_default()),
+                        dir,
+                        amt as f64 / 100.0,
+                        bal as f64 / 100.0,
+                    )
+                })
+                .collect();
+            ("date,description,direction,amount,balance", rows)
         }
         _ => return Err(AppError::BadRequest("unknown export type".into())),
     };

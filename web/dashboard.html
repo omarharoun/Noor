@@ -137,7 +137,21 @@ table.mtbl{width:100%;border-collapse:collapse;font-size:13px}
 @keyframes spin{to{transform:rotate(360deg)}}
 pre{background:var(--cream-deep);border:1px solid var(--border);border-radius:var(--r-sm);padding:12px;overflow:auto;font-size:12px;font-family:var(--font-mono);max-height:220px;margin:8px 0;color:var(--ink-2)}
 @media(max-width:940px){.app{grid-template-columns:1fr}.sidebar{display:none}.balance-hero{grid-template-columns:1fr}.detail,.form-row{grid-template-columns:1fr}}
+/* dark mode — override the palette only */
+html[data-theme="dark"]{
+  --clay:#D2774F;--clay-50:#2A1F18;--brand:#D2774F;--brand-soft:#2A1F18;
+  --cream:#17150F;--cream-deep:#1F1C15;--manilla:#262219;--surface:#211E18;--surface-2:#1B1813;
+  --ink:#F2EEE4;--ink-2:#C9C2B4;--ink-3:#9A9384;--ink-4:#6E685C;
+  --border:#322E25;--border-strong:#403A2F;--border-ink:#4A4438;
+  --success:#8FCB7A;--success-fill:#1E2A18;--success-border:#2E3F25;
+  --warning:#E0B062;--warning-fill:#2A2212;--warning-border:#3F3320;
+  --info:#84B6E0;--info-fill:#16222E;--info-border:#24384A;
+  --danger:#E8927A;--danger-fill:#2E1A14;--danger-border:#4A2A20;
+  --neutral:#B8AE9C;--neutral-fill:#262219;--neutral-border:#3A352B;
+  --shadow-xs:0 1px 2px rgba(0,0,0,.3);--shadow-sm:0 1px 2px rgba(0,0,0,.25),0 2px 6px rgba(0,0,0,.3);--shadow-md:0 2px 4px rgba(0,0,0,.3),0 8px 20px rgba(0,0,0,.45);
+}
 </style>
+<script>(function(){try{var t=localStorage.getItem('noor_theme');if(t==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}})();</script>
 </head>
 <body>
 <div class="app" style="display:none">
@@ -166,6 +180,7 @@ pre{background:var(--cream-deep);border:1px solid var(--border);border-radius:va
       <h1 id="page-title">Overview</h1>
       <div class="spacer"></div>
       <button class="mbtn mbtn-primary mbtn-sm" onclick="switchTab('create')"><i data-lucide="plus" style="width:14px;height:14px"></i>New payment link</button>
+      <button class="icon-btn" title="Toggle theme" onclick="toggleTheme()"><i data-lucide="moon" style="width:17px;height:17px"></i></button>
       <button class="icon-btn" title="Sign out" onclick="logout()"><i data-lucide="log-out" style="width:17px;height:17px"></i></button>
     </header>
     <div class="content">
@@ -276,6 +291,11 @@ document.querySelectorAll('.nav-item').forEach(a => a.addEventListener('click', 
   if(tab==='team') loadTeam();
 }));
 function switchTab(name){ document.querySelector(`.nav-item[data-tab="${name}"]`)?.click(); }
+function toggleTheme(){
+  const dark = document.documentElement.getAttribute('data-theme')==='dark';
+  if(dark){ document.documentElement.removeAttribute('data-theme'); localStorage.setItem('noor_theme','light'); }
+  else { document.documentElement.setAttribute('data-theme','dark'); localStorage.setItem('noor_theme','dark'); }
+}
 
 /* ---------- overview ---------- */
 async function loadOverview(){
@@ -604,14 +624,36 @@ async function loadReports(){
         ${card('Paid out', fmt(r.payouts.total), r.payouts.count+' payouts')}
         ${card('Invoiced', fmt(r.invoices.total), r.invoices.count+' invoices · '+r.invoices.paid+' paid')}
       </div>
-      <div class="mcard"><div class="mcard-head"><h2 class="mcard-title">Exports</h2></div>
+      <div class="mcard"><div class="mcard-head"><h2 class="mcard-title">Account statement</h2>
+          <button class="mbtn mbtn-secondary mbtn-sm" onclick="downloadCsv('statement')"><i data-lucide="download" style="width:13px;height:13px"></i>Statement CSV</button></div>
+        <div id="statement-list"><div class="empty"><div class="spinner"></div></div></div></div>
+      <div class="mcard"><div class="mcard-head"><h2 class="mcard-title">Other exports</h2></div>
         <div class="mcard-body" style="display:flex;gap:10px;flex-wrap:wrap">
           <button class="mbtn mbtn-secondary mbtn-sm" onclick="downloadCsv('payments')"><i data-lucide="download" style="width:14px;height:14px"></i>Payments CSV</button>
           <button class="mbtn mbtn-secondary mbtn-sm" onclick="downloadCsv('invoices')"><i data-lucide="download" style="width:14px;height:14px"></i>Invoices CSV</button>
           <button class="mbtn mbtn-secondary mbtn-sm" onclick="downloadCsv('payouts')"><i data-lucide="download" style="width:14px;height:14px"></i>Payouts CSV</button>
         </div></div>`;
     icons();
+    loadStatement();
   }catch(e){ if(e.message!=='unauthorized') el.innerHTML=`<div class="mcard"><div class="mcard-body"><div class="flash error">${e.message}</div></div></div>`; }
+}
+const STMT_TYPE = { settlement:'Payment received', reversal:'Reversal', payout:'Payout', payout_reversal:'Payout reversed', deposit:'Top-up' };
+async function loadStatement(){
+  const el=document.getElementById('statement-list'); if(!el) return;
+  try{
+    const d=await api('/api/merchant-api/statement');
+    const items=d.entries||[];
+    if(!items.length){ el.innerHTML=`<div class="empty">No account activity yet.</div>`; return; }
+    el.innerHTML=`<div class="tbl-wrap"><table class="mtbl"><thead><tr><th>Date</th><th>Description</th><th style="text-align:right">Credit</th><th style="text-align:right">Debit</th><th style="text-align:right">Balance</th></tr></thead><tbody>
+      ${items.map(e=>`<tr>
+        <td class="cell-muted">${e.date?new Date(e.date).toLocaleDateString():'—'}</td>
+        <td>${STMT_TYPE[e.type]||e.description||'—'}</td>
+        <td class="cell-amt" style="text-align:right;color:var(--success)">${e.direction==='credit'?fmt(e.amount):''}</td>
+        <td class="cell-amt" style="text-align:right;color:var(--danger)">${e.direction==='debit'?fmt(e.amount):''}</td>
+        <td class="cell-amt" style="text-align:right">${fmt(e.balance)}</td>
+      </tr>`).join('')}</tbody></table></div>`;
+    icons();
+  }catch(e){ if(e.message!=='unauthorized') el.innerHTML=`<div class="mcard-body"><div class="flash error">${e.message}</div></div>`; }
 }
 async function downloadCsv(kind){
   try{

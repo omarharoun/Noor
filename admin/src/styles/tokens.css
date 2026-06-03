@@ -219,3 +219,25 @@ code, .noor-code {
   padding: 0.1em 0.4em;
   color: var(--clay-700);
 }
+
+/* ============================================================
+   DARK MODE — override the palette only (structure unchanged)
+   ============================================================ */
+html[data-theme="dark"] {
+  --clay-50: #2A1F18; --clay-700: #E0A488;
+  --clay: #D2774F; --clay-600: #E08862;
+  --cream: #17150F; --cream-deep: #1F1C15; --manilla: #262219;
+  --surface: #211E18; --surface-2: #1B1813;
+  --ink: #F2EEE4; --ink-2: #C9C2B4; --ink-3: #9A9384; --ink-4: #6E685C;
+  --border: #322E25; --border-strong: #403A2F; --border-ink: #4A4438;
+  --success: #8FCB7A; --success-fill: #1E2A18; --success-border: #2E3F25;
+  --warning: #E0B062; --warning-fill: #2A2212; --warning-border: #3F3320;
+  --info: #84B6E0; --info-fill: #16222E; --info-border: #24384A;
+  --danger: #E8927A; --danger-fill: #2E1A14; --danger-border: #4A2A20;
+  --neutral: #B8AE9C; --neutral-fill: #262219; --neutral-border: #3A352B;
+  --viz-grid: #2A2619;
+  --shadow-xs: 0 1px 2px rgba(0,0,0,.3);
+  --shadow-sm: 0 1px 2px rgba(0,0,0,.25), 0 2px 6px rgba(0,0,0,.3);
+  --shadow-md: 0 2px 4px rgba(0,0,0,.3), 0 8px 20px rgba(0,0,0,.45);
+  --shadow-lg: 0 10px 38px rgba(0,0,0,.5);
+}

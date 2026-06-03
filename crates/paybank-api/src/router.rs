@@ -233,6 +233,10 @@ pub fn build_router(state: AppState) -> Router {
             get(routes::merchant_api::report_summary),
         )
         .route(
+            "/api/merchant-api/statement",
+            get(routes::merchant_api::statement),
+        )
+        .route(
             "/api/merchant-api/exports/:kind",
             get(routes::merchant_api::export_csv),
         )
