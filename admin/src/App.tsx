@@ -7,7 +7,6 @@ import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
 import { Sessions } from './pages/Sessions';
 import { Merchants } from './pages/Merchants';
-import { Banks } from './pages/Banks';
 import { Settlements } from './pages/Settlements';
 import { Payouts } from './pages/Payouts';
 import { Invoices } from './pages/Invoices';
@@ -20,7 +19,6 @@ export type PageId =
   | 'dashboard'
   | 'sessions'
   | 'merchants'
-  | 'banks'
   | 'settlements'
   | 'payouts'
   | 'invoices'
@@ -41,7 +39,6 @@ const TITLES: Record<PageId, [string, string]> = {
   dashboard: ['Dashboard', 'Live overview of payment operations'],
   sessions: ['Sessions', 'Every payment session and its lifecycle'],
   merchants: ['Merchants', 'Accounts, onboarding and KYC status'],
-  banks: ['Banks', 'Supported institutions and rail coverage'],
   settlements: ['Settlements', 'Merchant balances and payouts'],
   payouts: ['Payouts', 'Outbound payments across merchants'],
   invoices: ['Invoices', 'Billing activity across merchants'],
@@ -79,7 +76,6 @@ function Console() {
     { id: 'dashboard' as const, label: 'Dashboard', icon: 'layout-dashboard' },
     { id: 'sessions' as const, label: 'Sessions', icon: 'arrow-left-right', count: sessionCount },
     { id: 'merchants' as const, label: 'Merchants', icon: 'store', count: merchants.length || undefined },
-    { id: 'banks' as const, label: 'Banks', icon: 'landmark' },
     { id: 'settlements' as const, label: 'Settlements', icon: 'wallet' },
     { id: 'payouts' as const, label: 'Payouts', icon: 'send' },
     { id: 'invoices' as const, label: 'Invoices', icon: 'file-text' },
@@ -106,15 +102,15 @@ function Console() {
           <span className="brand-word">Noor</span>
         </div>
         <div className="nav-section">Operations</div>
-        {nav.slice(0, 4).map((n) => (
+        {nav.slice(0, 3).map((n) => (
           <NavItem key={n.id} n={n} active={page === n.id} onClick={() => setPage(n.id)} />
         ))}
         <div className="nav-section">Money</div>
-        {nav.slice(4, 8).map((n) => (
+        {nav.slice(3, 7).map((n) => (
           <NavItem key={n.id} n={n} active={page === n.id} onClick={() => setPage(n.id)} />
         ))}
         <div className="nav-section">System</div>
-        {nav.slice(8).map((n) => (
+        {nav.slice(7).map((n) => (
           <NavItem key={n.id} n={n} active={page === n.id} onClick={() => setPage(n.id)} />
         ))}
         <div className="sidebar-foot">
@@ -155,7 +151,6 @@ function Console() {
           {page === 'dashboard' && <Dashboard ctx={ctx} />}
           {page === 'sessions' && <Sessions ctx={ctx} />}
           {page === 'merchants' && <Merchants />}
-          {page === 'banks' && <Banks />}
           {page === 'settlements' && <Settlements />}
           {page === 'payouts' && <Payouts />}
           {page === 'invoices' && <Invoices />}

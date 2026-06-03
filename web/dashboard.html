@@ -387,7 +387,7 @@ async function loadOverview(){
       </div>
       <div class="mini-stats">
         <div class="mini-stat"><div class="ms-ico"><i data-lucide="check-circle-2" style="width:17px;height:17px;color:var(--brand)"></i></div><div><div class="ms-label">Payments</div><div class="ms-value" id="ov-count">0</div></div></div>
-        <div class="mini-stat"><div class="ms-ico"><i data-lucide="landmark" style="width:17px;height:17px;color:var(--brand)"></i></div><div><div class="ms-label">Banks supported</div><div class="ms-value" id="ov-banks">0</div></div></div>
+        <div class="mini-stat"><div class="ms-ico"><i data-lucide="zap" style="width:17px;height:17px;color:var(--brand)"></i></div><div><div class="ms-label">Default rail</div><div class="ms-value" style="font-size:17px">Fastest</div></div></div>
       </div>
     </div>
     <div id="wallet-action"></div>
@@ -395,15 +395,13 @@ async function loadOverview(){
       <div id="ov-activity"><div class="empty"><div class="spinner"></div></div></div></div>`;
   icons();
   try{
-    const [bal, pay, banks] = await Promise.all([
+    const [bal, pay] = await Promise.all([
       api('/api/merchant-api/balances/'+(MERCHANT_ID||DUMMY_ID)),
       api('/api/merchant-api/payments?page=0&limit=8'),
-      api('/api/banks'),
     ]);
     MERCHANT_ID = bal.merchant_id || MERCHANT_ID;
     document.getElementById('ov-balance').textContent = fmt(bal.available);
     document.getElementById('ov-pending').textContent = fmt(bal.pending);
-    document.getElementById('ov-banks').textContent = (banks.banks||[]).length;
     const items = pay.payments || [];
     document.getElementById('ov-count').textContent = items.length;
     const act = document.getElementById('ov-activity');
