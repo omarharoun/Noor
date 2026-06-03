@@ -53,6 +53,9 @@ const TITLES: Record<PageId, [string, string]> = {
 function Console() {
   const { operator, logout } = useAuth();
   const [page, setPage] = useState<PageId>('dashboard');
+  const [dark, setDark] = useState<boolean>(
+    () => document.documentElement.getAttribute('data-theme') === 'dark',
+  );
   const [merchants, setMerchants] = useState<Merchant[]>([]);
   const [sessionCount, setSessionCount] = useState<number | undefined>(undefined);
   const [failedWebhooks, setFailedWebhooks] = useState<number | undefined>(undefined);
@@ -65,6 +68,20 @@ function Console() {
       .then((r) => setFailedWebhooks(r.events.filter((e) => e.status === 'failed').length || undefined))
       .catch(() => {});
   }, []);
+
+  const toggleTheme = () => {
+    setDark((prev) => {
+      const next = !prev;
+      if (next) document.documentElement.setAttribute('data-theme', 'dark');
+      else document.documentElement.removeAttribute('data-theme');
+      try {
+        localStorage.setItem('noor_theme', next ? 'dark' : 'light');
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  };
 
   const ctx: Ctx = {
     go: setPage,
@@ -142,8 +159,15 @@ function Console() {
             <Icon name="bell" size={17} />
             <span className="dotnote" />
           </button>
+          <button
+            className="icon-btn"
+            onClick={toggleTheme}
+            title={dark ? 'Switch to light mode' : 'Switch to dark mode'}
+          >
+            <Icon name={dark ? 'sun' : 'moon'} size={17} />
+          </button>
           <button className="icon-btn" onClick={logout} title="Sign out">
-            <Icon name="settings" size={17} />
+            <Icon name="log-out" size={17} />
           </button>
         </header>
         <div className="content">

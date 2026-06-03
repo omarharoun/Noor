@@ -30,6 +30,7 @@
   --manilla:      #EFEADC;  /* warm fill chips, hover wells */
   --surface:      #FFFFFF;  /* cards, panels, menus */
   --surface-2:    #FCFBF8;  /* subtle raised inside cards */
+  --topbar-bg:    rgba(250,249,245,.85);  /* sticky topbar (translucent) */
 
   --ink:    #211F1A;  /* primary text, headings */
   --ink-2:  #57534A;  /* secondary text, labels */
@@ -228,6 +229,7 @@ html[data-theme="dark"] {
   --clay: #D2774F; --clay-600: #E08862;
   --cream: #17150F; --cream-deep: #1F1C15; --manilla: #262219;
   --surface: #211E18; --surface-2: #1B1813;
+  --topbar-bg: rgba(23,21,15,.85);
   --ink: #F2EEE4; --ink-2: #C9C2B4; --ink-3: #9A9384; --ink-4: #6E685C;
   --border: #322E25; --border-strong: #403A2F; --border-ink: #4A4438;
   --success: #8FCB7A; --success-fill: #1E2A18; --success-border: #2E3F25;

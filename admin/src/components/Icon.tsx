@@ -31,6 +31,8 @@ import {
   Send,
   List,
   FileText,
+  Moon,
+  Sun,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -68,6 +70,8 @@ const REGISTRY: Record<string, LucideIcon> = {
   send: Send,
   list: List,
   'file-text': FileText,
+  moon: Moon,
+  sun: Sun,
 };
 
 interface IconProps {

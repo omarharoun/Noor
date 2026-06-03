@@ -43,7 +43,7 @@ body {
 /* ---------- Main ---------- */
 .main { display: flex; flex-direction: column; min-width: 0; }
 .topbar {
-  height: 60px; background: rgba(250,249,245,.85); backdrop-filter: blur(8px);
+  height: 60px; background: var(--topbar-bg); backdrop-filter: blur(8px);
   border-bottom: 1px solid var(--border);
   display: flex; align-items: center; gap: 16px; padding: 0 28px;
   position: sticky; top: 0; z-index: 20;
