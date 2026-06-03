@@ -211,10 +211,12 @@ pub async fn create_payee(
     }
     let (cp, ext) = paybank_payments::onboard_payee(name, &acct_type, routing, account).await?;
     let last4 = account[account.len() - 4..].to_string();
+    let rails = paybank_payments::supported_rails(routing).await.join(",");
     let id = Uuid::new_v4();
     sqlx::query(
         "INSERT INTO payees (id, merchant_id, name, email, mt_counterparty_id, \
-         mt_external_account_id, account_last4, account_type) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)",
+         mt_external_account_id, account_last4, account_type, supported_rails) \
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)",
     )
     .bind(id)
     .bind(merchant_id)
@@ -224,6 +226,7 @@ pub async fn create_payee(
     .bind(&ext)
     .bind(&last4)
     .bind(&acct_type)
+    .bind(&rails)
     .execute(&state.db.pool)
     .await?;
     Ok(Json(serde_json::json!({
@@ -840,6 +843,15 @@ fn map_rail(s: &str) -> PaymentRail {
     }
 }
 
+fn rail_to_str(r: &PaymentRail) -> &'static str {
+    match r {
+        PaymentRail::FedNow => "fednow",
+        PaymentRail::Rtp => "rtp",
+        PaymentRail::Wire => "wire",
+        PaymentRail::Ach => "ach",
+    }
+}
+
 /// Spendable = ledger balance minus funds held by payouts still awaiting
 /// approval (those haven't posted a ledger debit yet).
 async fn merchant_spendable(pool: &sqlx::PgPool, merchant_id: Uuid) -> Result<i64, AppError> {
@@ -971,10 +983,10 @@ pub async fn create_payout(
     }
 
     // Resolve the payee: a saved one (reuse its MT counterparty/account) or new.
-    let (payee, cp_id, ext_id, last4) = if let Some(pid) = req.payee_id {
+    let (payee, cp_id, ext_id, last4, supported) = if let Some(pid) = req.payee_id {
         let row = sqlx::query(
-            "SELECT name, mt_counterparty_id, mt_external_account_id, account_last4 \
-             FROM payees WHERE id=$1 AND merchant_id=$2",
+            "SELECT name, mt_counterparty_id, mt_external_account_id, account_last4, \
+             supported_rails FROM payees WHERE id=$1 AND merchant_id=$2",
         )
         .bind(pid)
         .bind(actor.merchant_id)
@@ -992,6 +1004,16 @@ pub async fn create_payout(
             row.try_get::<Option<String>, _>("account_last4")
                 .ok()
                 .flatten()
+                .unwrap_or_default(),
+            row.try_get::<Option<String>, _>("supported_rails")
+                .ok()
+                .flatten()
+                .map(|s| {
+                    s.split(',')
+                        .map(|x| x.trim().to_string())
+                        .filter(|x| !x.is_empty())
+                        .collect::<Vec<_>>()
+                })
                 .unwrap_or_default(),
         )
     } else {
@@ -1035,10 +1057,12 @@ pub async fn create_payout(
         let (cp, ext) =
             paybank_payments::onboard_payee(&payee, &acct_type, &routing, &account).await?;
         let l4 = account[account.len() - 4..].to_string();
+        let supported = paybank_payments::supported_rails(&routing).await;
         if req.save_payee.unwrap_or(false) {
             let _ = sqlx::query(
                 "INSERT INTO payees (merchant_id, name, mt_counterparty_id, \
-                 mt_external_account_id, account_last4, account_type) VALUES ($1,$2,$3,$4,$5,$6)",
+                 mt_external_account_id, account_last4, account_type, supported_rails) \
+                 VALUES ($1,$2,$3,$4,$5,$6,$7)",
             )
             .bind(actor.merchant_id)
             .bind(&payee)
@@ -1046,17 +1070,26 @@ pub async fn create_payout(
             .bind(&ext)
             .bind(&l4)
             .bind(&acct_type)
+            .bind(supported.join(","))
             .execute(&state.db.pool)
             .await;
         }
-        (payee, cp, ext, l4)
+        (payee, cp, ext, l4, supported)
     };
 
-    let rail = req
+    // Auto-route to the fastest rail the payee's bank supports (per Modern
+    // Treasury) unless the merchant explicitly picked one. Absent or "auto"
+    // => fastest supported, falling back to ACH.
+    let requested = req
         .rail
         .clone()
-        .unwrap_or_else(|| "ach".into())
+        .unwrap_or_else(|| "auto".into())
         .to_lowercase();
+    let rail = if requested == "auto" {
+        rail_to_str(&paybank_payments::fastest_rail(&supported)).to_string()
+    } else {
+        requested
+    };
     let owner_initiated = actor.role == "owner";
     let id = Uuid::new_v4();
 

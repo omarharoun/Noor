@@ -7,7 +7,23 @@ use paybank_core::{AppError, PaymentRail};
 use serde::{Deserialize, Serialize};
 
 pub use email::send_email;
+pub use moderntreasury::supported_rails;
 pub use rail::choose_rail;
+
+/// Pick the fastest payout rail Modern Treasury says a routing number supports.
+/// Instant rails win (FedNow → RTP); otherwise ACH. Wire is never auto-selected
+/// — it's slower and costlier, and stays a manual override. An empty list
+/// (MT couldn't resolve the routing number) falls back to ACH.
+pub fn fastest_rail(supported: &[String]) -> PaymentRail {
+    let has = |r: &str| supported.iter().any(|s| s.eq_ignore_ascii_case(r));
+    if has("fednow") {
+        PaymentRail::FedNow
+    } else if has("rtp") {
+        PaymentRail::Rtp
+    } else {
+        PaymentRail::Ach
+    }
+}
 
 /// Bank account details used to create a counterparty/external account.
 /// (Previously sourced from Plaid; now entered directly by the customer.)

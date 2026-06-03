@@ -808,7 +808,7 @@ async function downloadCsv(kind){
 }
 
 /* ---------- send money ---------- */
-const RAILS = ['ach','wire','rtp','fednow'];
+const RAIL_OPTS = [['auto','Auto — fastest available'],['rtp','RTP (instant)'],['fednow','FedNow (instant)'],['ach','ACH'],['wire','Wire']];
 async function loadSend(){
   const el = document.getElementById('section-send');
   let payees = [];
@@ -832,7 +832,7 @@ async function loadSend(){
       </div>
       <div class="form-row">
         <div class="field"><label>Amount (USD)</label><input id="p-amount" value="10.00" inputmode="decimal"></div>
-        <div class="field"><label>Rail</label><select id="p-rail">${RAILS.map(r=>`<option value="${r}">${r.toUpperCase()}</option>`).join('')}</select></div>
+        <div class="field"><label>Rail</label><select id="p-rail">${RAIL_OPTS.map(([v,l])=>`<option value="${v}">${l}</option>`).join('')}</select></div>
       </div>
       <div class="field"><label>Memo</label><input id="p-memo" placeholder="Optional"></div>
       <div class="flash info">${canApprove() && USER.role==='owner' ? 'As an owner, your payouts send immediately.' : 'Payouts require approval by an admin or owner before they send.'}</div>

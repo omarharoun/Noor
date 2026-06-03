@@ -67,4 +67,25 @@ mod tests {
         assert_eq!(choose_rail(false, false, false, 500_000), PaymentRail::Ach);
         assert_eq!(choose_rail(true, false, true, 500_000), PaymentRail::FedNow);
     }
+
+    // ---- fastest_rail: payout auto-routing from MT's supported_payment_types --
+    use crate::fastest_rail;
+
+    #[test]
+    fn fastest_prefers_instant_then_falls_back_to_ach() {
+        let s = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<Vec<_>>();
+        // FedNow wins when present.
+        assert_eq!(
+            fastest_rail(&s(&["ach", "rtp", "fednow"])),
+            PaymentRail::FedNow
+        );
+        // RTP is the fastest available (MT sandbox never returns fednow).
+        assert_eq!(fastest_rail(&s(&["wire", "ach", "rtp"])), PaymentRail::Rtp);
+        // Wire is NOT auto-selected — instant-or-ACH only.
+        assert_eq!(fastest_rail(&s(&["ach", "wire"])), PaymentRail::Ach);
+        // Empty (MT couldn't resolve the routing number) => ACH.
+        assert_eq!(fastest_rail(&[]), PaymentRail::Ach);
+        // Case-insensitive.
+        assert_eq!(fastest_rail(&s(&["RTP"])), PaymentRail::Rtp);
+    }
 }

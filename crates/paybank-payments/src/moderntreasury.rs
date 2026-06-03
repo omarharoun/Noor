@@ -35,6 +35,42 @@ fn mt_client() -> Result<Client, AppError> {
         .map_err(|e| AppError::ModernTreasuryError(e.to_string()))
 }
 
+/// Ask Modern Treasury which payment rails an ABA routing number supports.
+/// Best-effort: returns MT's payment-type strings (e.g. ["ach","rtp","wire"]),
+/// or an empty vec if MT can't resolve the number — callers fall back to ACH.
+pub async fn supported_rails(routing_number: &str) -> Vec<String> {
+    let client = match mt_client() {
+        Ok(c) => c,
+        Err(_) => return vec![],
+    };
+    let url = format!(
+        "{MT_BASE_URL}/validations/routing_numbers?routing_number={routing_number}&routing_number_type=aba"
+    );
+    let resp = match client.get(&url).send().await {
+        Ok(r) if r.status().is_success() => r,
+        Ok(r) => {
+            tracing::warn!("MT routing lookup {}: {}", routing_number, r.status());
+            return vec![];
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "MT routing lookup request failed");
+            return vec![];
+        }
+    };
+    let body: serde_json::Value = match resp.json().await {
+        Ok(b) => b,
+        Err(_) => return vec![],
+    };
+    body.get("supported_payment_types")
+        .and_then(|v| v.as_array())
+        .map(|a| {
+            a.iter()
+                .filter_map(|x| x.as_str().map(|s| s.to_string()))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 #[derive(Debug, Serialize)]
 struct CreateCounterpartyRequest {
     name: String,
