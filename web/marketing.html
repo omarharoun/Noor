@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Noor — Move money with confidence</title>
+<meta name="description" content="Noor is a modern money-movement platform: invoicing, payouts, and a built-in wallet, settled over the fastest payment rail available.">
+<style>
+  :root{
+    --cream:#FAF9F5; --cream-deep:#F4F2EA; --surface:#FFFFFF;
+    --ink:#211F1A; --ink-2:#57534A; --ink-3:#8B857A;
+    --border:#E9E5DA; --brand:#BE7140; --brand-soft:#F7ECE1;
+    --r-lg:18px; --r-sm:10px;
+    --font-serif:Georgia,'Times New Roman',serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--cream);color:var(--ink);line-height:1.55;-webkit-font-smoothing:antialiased}
+  a{color:inherit}
+  .wrap{max-width:1040px;margin:0 auto;padding:0 24px}
+  header{display:flex;align-items:center;justify-content:space-between;padding:22px 0}
+  .brand{display:flex;align-items:center;gap:10px;font-family:var(--font-serif);font-size:20px;font-weight:600}
+  .glyph{width:30px;height:30px;border-radius:9px;background:var(--brand);position:relative;display:inline-block}
+  .glyph svg{position:absolute;inset:0}
+  .nav-cta{display:flex;gap:10px;align-items:center}
+  .btn{display:inline-flex;align-items:center;gap:8px;border-radius:var(--r-sm);padding:10px 18px;font-size:14px;font-weight:600;text-decoration:none;border:1px solid var(--border);background:var(--surface);color:var(--ink);cursor:pointer;transition:.15s}
+  .btn:hover{border-color:var(--ink-3)}
+  .btn-primary{background:var(--brand);border-color:var(--brand);color:#fff}
+  .btn-primary:hover{filter:brightness(1.05)}
+  .hero{padding:64px 0 40px;text-align:center}
+  .eyebrow{display:inline-block;font-size:12.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--brand);background:var(--brand-soft);padding:5px 12px;border-radius:999px;margin-bottom:22px}
+  h1{font-family:var(--font-serif);font-weight:500;font-size:clamp(34px,6vw,56px);line-height:1.08;letter-spacing:-.02em;margin:0 0 18px}
+  .lede{font-size:18px;color:var(--ink-2);max-width:600px;margin:0 auto 30px}
+  .hero .nav-cta{justify-content:center}
+  .features{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;padding:48px 0}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);padding:26px}
+  .card h3{font-family:var(--font-serif);font-weight:500;font-size:20px;margin:0 0 8px}
+  .card p{color:var(--ink-2);font-size:14.5px;margin:0}
+  .ico{width:40px;height:40px;border-radius:11px;background:var(--brand-soft);color:var(--brand);display:grid;place-items:center;margin-bottom:16px;font-size:20px;font-weight:700;font-family:var(--font-serif)}
+  .rails{background:var(--cream-deep);border:1px solid var(--border);border-radius:var(--r-lg);padding:34px;text-align:center;margin:8px 0 56px}
+  .rails h2{font-family:var(--font-serif);font-weight:500;font-size:26px;margin:0 0 10px}
+  .rails p{color:var(--ink-2);max-width:560px;margin:0 auto 18px}
+  .chips{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+  .chip{font-size:13px;font-weight:600;background:var(--surface);border:1px solid var(--border);border-radius:999px;padding:7px 16px}
+  footer{border-top:1px solid var(--border);padding:30px 0;color:var(--ink-3);font-size:13px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px}
+  @media(max-width:760px){.features{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="brand">
+        <span class="glyph"><svg viewBox="0 0 30 30"><path d="M20 8.5a8.2 8.2 0 1 0 0 13 6.4 6.4 0 1 1 0-13Z" fill="var(--cream)"/></svg></span>
+        Noor
+      </div>
+      <div class="nav-cta">
+        <a class="btn" href="https://app.norhadi.com">Sign in</a>
+      </div>
+    </header>
+
+    <section class="hero">
+      <span class="eyebrow">Money movement, simplified</span>
+      <h1>Invoicing, payouts, and a wallet — in one place.</h1>
+      <p class="lede">Noor lets your business get paid, pay vendors, and hold a balance — settled automatically over the fastest payment rail available, with bank-grade controls.</p>
+      <div class="nav-cta">
+        <a class="btn btn-primary" href="https://app.norhadi.com">Open your dashboard</a>
+        <a class="btn" href="mailto:hello@norhadi.com">Talk to us</a>
+      </div>
+    </section>
+
+    <section class="features">
+      <div class="card">
+        <div class="ico">₪</div>
+        <h3>Get paid</h3>
+        <p>Send branded invoices with a secure hosted pay page. Customers pay by bank transfer; you see it land in real time.</p>
+      </div>
+      <div class="card">
+        <div class="ico">↗</div>
+        <h3>Pay anyone</h3>
+        <p>Pay vendors and contractors from your balance with dual-control approvals — auto-routed to the fastest rail their bank supports.</p>
+      </div>
+      <div class="card">
+        <div class="ico">◷</div>
+        <h3>Hold a balance</h3>
+        <p>Top up and withdraw to your bank, with a full double-entry ledger, statements, and exports behind every cent.</p>
+      </div>
+    </section>
+
+    <section class="rails">
+      <h2>Always the fastest way to move money</h2>
+      <p>Every payment is routed over the quickest rail the receiving bank supports — instant where possible, with reliable fallback.</p>
+      <div class="chips">
+        <span class="chip">FedNow</span>
+        <span class="chip">RTP — instant</span>
+        <span class="chip">ACH</span>
+        <span class="chip">Wire</span>
+      </div>
+    </section>
+
+    <footer>
+      <span>© Noor. All rights reserved.</span>
+      <span><a href="https://app.norhadi.com" style="text-decoration:none">Sign in</a></span>
+    </footer>
+  </div>
+</body>
+</html>

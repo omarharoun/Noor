@@ -7,7 +7,6 @@ use axum::{
     Router,
 };
 use tower_http::cors::{AllowOrigin, CorsLayer};
-use tower_http::services::ServeDir;
 use uuid::Uuid;
 
 use crate::auth;
@@ -81,6 +80,46 @@ async fn admin_handler(req: Request) -> Response {
             }
             StatusCode::NOT_FOUND.into_response()
         }
+    }
+}
+
+async fn serve_html(path: &str) -> Response {
+    match tokio::fs::read_to_string(path).await {
+        Ok(content) => ([(axum::http::header::CONTENT_TYPE, "text/html")], content).into_response(),
+        Err(_) => StatusCode::NOT_FOUND.into_response(),
+    }
+}
+
+/// Root (`/`) is served by Host, so one Railway service backs every subdomain:
+///   app.*      → merchant dashboard      platform.* → operator console (SPA)
+///   api.*      → API info page           apex/www/* → marketing site
+/// The `/api/*` routes answer on EVERY host, so each UI calls its own origin
+/// (no cross-origin/CORS). Per-app static assets keep their existing paths
+/// (/admin/* for the console, self-contained HTML for the dashboard).
+async fn root_handler(req: Request) -> Response {
+    let host = req
+        .headers()
+        .get(axum::http::header::HOST)
+        .and_then(|h| h.to_str().ok())
+        .unwrap_or("")
+        .split(':')
+        .next()
+        .unwrap_or("");
+    if host.starts_with("app.") {
+        serve_html("web/dashboard.html").await
+    } else if host.starts_with("platform.") {
+        // The built SPA references its assets at absolute /admin/assets/*, which
+        // the /admin/* route serves on this host too — so booting from / works.
+        serve_html("admin/dist/index.html").await
+    } else if host.starts_with("api.") {
+        ([(axum::http::header::CONTENT_TYPE, "text/html")],
+         "<!doctype html><meta charset=utf-8><title>Noor API</title>\
+          <body style=\"font-family:system-ui;max-width:40rem;margin:4rem auto;padding:0 1rem;color:#211F1A\">\
+          <h1>Noor API</h1><p>This is the Noor API endpoint. \
+          The merchant dashboard is at <a href=\"https://app.norhadi.com\">app.norhadi.com</a>.</p></body>")
+            .into_response()
+    } else {
+        serve_html("web/marketing.html").await
     }
 }
 
@@ -320,10 +359,10 @@ pub fn build_router(state: AppState) -> Router {
             "/api/mt/counterparties/:id",
             get(routes::mt::get_counterparty),
         )
+        .route("/", get(root_handler))
         .route("/admin", get(admin_handler))
         .route("/admin/", get(admin_handler))
-        .route("/admin/*path", get(admin_handler))
-        .nest_service("/static", ServeDir::new("web"));
+        .route("/admin/*path", get(admin_handler));
 
     // Restrict CORS to configured origins (CORS_ALLOWED_ORIGINS, comma-separated;
     // defaults to PUBLIC_APP_URL). Bearer tokens travel in the Authorization
