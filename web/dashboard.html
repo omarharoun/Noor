@@ -165,6 +165,7 @@ html[data-theme="dark"]{
     <button class="nav-item" data-tab="payments"><i data-lucide="receipt"></i>Payments</button>
     <button class="nav-item" data-tab="invoices"><i data-lucide="file-text"></i>Invoices</button>
     <button class="nav-item" data-tab="reports"><i data-lucide="bar-chart-3"></i>Reports</button>
+    <button class="nav-item" data-tab="contacts"><i data-lucide="contact"></i>Contacts</button>
     <button class="nav-item" data-tab="send"><i data-lucide="send"></i>Send money</button>
     <button class="nav-item" data-tab="approvals" id="nav-approvals" style="display:none"><i data-lucide="check-square"></i>Approvals</button>
     <button class="nav-item" data-tab="create"><i data-lucide="plus-circle"></i>Payment link</button>
@@ -189,6 +190,7 @@ html[data-theme="dark"]{
       <div id="section-payments" class="section"></div>
       <div id="section-invoices" class="section"></div>
       <div id="section-reports" class="section"></div>
+      <div id="section-contacts" class="section"></div>
       <div id="section-send" class="section"></div>
       <div id="section-approvals" class="section"></div>
       <div id="section-create" class="section"></div>
@@ -215,6 +217,7 @@ const TITLES = {
   payments: ['Payments', 'Settled and in-flight payments on your account.'],
   invoices: ['Invoices', 'Send invoices and get paid by bank transfer.'],
   reports:  ['Reports', 'Money in, money out, and exports for your books.'],
+  contacts: ['Contacts', 'Saved payees and customers for quick reuse.'],
   send:     ['Send money', 'Pay a vendor or contractor from your balance.'],
   approvals:['Approvals', 'Payouts awaiting a second approver.'],
   create:   ['Payment link', 'Create a hosted checkout link to collect a payment.'],
@@ -284,6 +287,7 @@ document.querySelectorAll('.nav-item').forEach(a => a.addEventListener('click', 
   if(tab==='payments') loadPayments();
   if(tab==='invoices') loadInvoices();
   if(tab==='reports') loadReports();
+  if(tab==='contacts') loadContacts();
   if(tab==='send') loadSend();
   if(tab==='approvals') loadApprovals();
   if(tab==='create') renderCreate();
@@ -618,6 +622,61 @@ function walletAction(kind){
   });
 }
 
+/* ---------- contacts ---------- */
+async function loadContacts(){
+  const el=document.getElementById('section-contacts');
+  el.innerHTML=`
+    <div class="mcard"><div class="mcard-head"><h2 class="mcard-title">Payees</h2>
+      <button class="mbtn mbtn-secondary mbtn-sm" onclick="document.getElementById('payee-form').style.display=''"><i data-lucide="plus" style="width:13px;height:13px"></i>Add payee</button></div>
+      <div id="payee-form" style="display:none"><div class="mcard-body"><form id="pf" style="max-width:560px">
+        <div class="form-row"><div class="field"><label>Name</label><input id="pf-name" placeholder="Vendor LLC"></div>
+          <div class="field"><label>Account type</label><select id="pf-type"><option value="checking">Checking</option><option value="savings">Savings</option></select></div></div>
+        <div class="form-row"><div class="field"><label>Routing</label><input id="pf-routing" inputmode="numeric"></div>
+          <div class="field"><label>Account</label><input id="pf-account" inputmode="numeric"></div></div>
+        <div class="form-actions"><button class="mbtn mbtn-primary mbtn-sm" type="submit">Save payee</button></div>
+      </form><div id="pf-res"></div></div></div>
+      <div id="payee-list"><div class="empty"><div class="spinner"></div></div></div></div>
+    <div class="mcard"><div class="mcard-head"><h2 class="mcard-title">Customers</h2>
+      <button class="mbtn mbtn-secondary mbtn-sm" onclick="document.getElementById('cust-form').style.display=''"><i data-lucide="plus" style="width:13px;height:13px"></i>Add customer</button></div>
+      <div id="cust-form" style="display:none"><div class="mcard-body"><form id="cf" style="max-width:560px">
+        <div class="form-row"><div class="field"><label>Name</label><input id="cf-name" placeholder="Acme Inc"></div>
+          <div class="field"><label>Email</label><input id="cf-email" type="email" placeholder="billing@acme.com"></div></div>
+        <div class="form-actions"><button class="mbtn mbtn-primary mbtn-sm" type="submit">Save customer</button></div>
+      </form><div id="cf-res"></div></div></div>
+      <div id="cust-list"><div class="empty"><div class="spinner"></div></div></div></div>`;
+  icons();
+  document.getElementById('pf').addEventListener('submit', async e=>{
+    e.preventDefault(); const res=document.getElementById('pf-res');
+    try{ await api('/api/merchant-api/payees',{method:'POST',body:JSON.stringify({
+      name:document.getElementById('pf-name').value.trim(), account_type:document.getElementById('pf-type').value,
+      routing_number:document.getElementById('pf-routing').value.trim(), account_number:document.getElementById('pf-account').value.trim() })});
+      loadContacts();
+    }catch(e){ if(e.message!=='unauthorized') res.innerHTML=`<div class="flash error">${e.message}</div>`; }
+  });
+  document.getElementById('cf').addEventListener('submit', async e=>{
+    e.preventDefault(); const res=document.getElementById('cf-res');
+    try{ await api('/api/merchant-api/customers',{method:'POST',body:JSON.stringify({
+      name:document.getElementById('cf-name').value.trim(), email:document.getElementById('cf-email').value.trim() })});
+      loadContacts();
+    }catch(e){ if(e.message!=='unauthorized') res.innerHTML=`<div class="flash error">${e.message}</div>`; }
+  });
+  renderContactList('payee-list', '/api/merchant-api/payees', 'payees', p=>[p.name, '••'+(p.account_last4||''), p.id], 'payees');
+  renderContactList('cust-list', '/api/merchant-api/customers', 'customers', c=>[c.name, c.email, c.id], 'customers');
+}
+async function renderContactList(elId, path, key, cols, kind){
+  const el=document.getElementById(elId); if(!el) return;
+  try{
+    const data=await api(path); const items=data[key]||[];
+    if(!items.length){ el.innerHTML=`<div class="empty">None yet.</div>`; return; }
+    el.innerHTML=`<div class="tbl-wrap"><table class="mtbl"><tbody>
+      ${items.map(it=>{const c=cols(it);return `<tr><td>${c[0]}</td><td class="cell-muted">${c[1]}</td>
+        <td style="text-align:right"><button class="mbtn mbtn-secondary mbtn-sm" onclick="delContact('${kind}','${c[2]}')">Remove</button></td></tr>`;}).join('')}
+    </tbody></table></div>`;
+    icons();
+  }catch(e){ el.innerHTML=''; }
+}
+async function delContact(kind, id){ try{ await api('/api/merchant-api/'+kind+'/'+id,{method:'DELETE'}); loadContacts(); }catch(_){} }
+
 /* ---------- reports ---------- */
 async function loadReports(){
   const el=document.getElementById('section-reports');
@@ -633,7 +692,12 @@ async function loadReports(){
         ${card('Invoiced', fmt(r.invoices.total), r.invoices.count+' invoices · '+r.invoices.paid+' paid')}
       </div>
       <div class="mcard"><div class="mcard-head"><h2 class="mcard-title">Account statement</h2>
-          <button class="mbtn mbtn-secondary mbtn-sm" onclick="downloadCsv('statement')"><i data-lucide="download" style="width:13px;height:13px"></i>Statement CSV</button></div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <input id="stmt-from" type="date" style="padding:6px 8px;border:1px solid var(--border-strong);border-radius:var(--r-sm);font-size:12px;background:var(--surface);color:var(--ink)">
+            <span class="cell-muted" style="font-size:12px">to</span>
+            <input id="stmt-to" type="date" style="padding:6px 8px;border:1px solid var(--border-strong);border-radius:var(--r-sm);font-size:12px;background:var(--surface);color:var(--ink)">
+            <button class="mbtn mbtn-secondary mbtn-sm" onclick="loadStatement()">Apply</button>
+            <button class="mbtn mbtn-secondary mbtn-sm" onclick="downloadCsv('statement')"><i data-lucide="download" style="width:13px;height:13px"></i>CSV</button></div></div>
         <div id="statement-list"><div class="empty"><div class="spinner"></div></div></div></div>
       <div class="mcard"><div class="mcard-head"><h2 class="mcard-title">Other exports</h2></div>
         <div class="mcard-body" style="display:flex;gap:10px;flex-wrap:wrap">
@@ -648,8 +712,10 @@ async function loadReports(){
 const STMT_TYPE = { settlement:'Payment received', reversal:'Reversal', payout:'Payout', payout_reversal:'Payout reversed', deposit:'Top-up' };
 async function loadStatement(){
   const el=document.getElementById('statement-list'); if(!el) return;
+  const from=document.getElementById('stmt-from')?.value, to=document.getElementById('stmt-to')?.value;
+  const qs=[]; if(from) qs.push('from='+from); if(to) qs.push('to='+to);
   try{
-    const d=await api('/api/merchant-api/statement');
+    const d=await api('/api/merchant-api/statement'+(qs.length?('?'+qs.join('&')):''));
     const items=d.entries||[];
     if(!items.length){ el.innerHTML=`<div class="empty">No account activity yet.</div>`; return; }
     el.innerHTML=`<div class="tbl-wrap"><table class="mtbl"><thead><tr><th>Date</th><th>Description</th><th style="text-align:right">Credit</th><th style="text-align:right">Debit</th><th style="text-align:right">Balance</th></tr></thead><tbody>

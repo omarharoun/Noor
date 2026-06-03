@@ -249,6 +249,10 @@ pub fn build_router(state: AppState) -> Router {
             get(routes::merchant_api::list_customers).post(routes::merchant_api::create_customer),
         )
         .route(
+            "/api/merchant-api/customers/:id",
+            axum::routing::delete(routes::merchant_api::delete_customer),
+        )
+        .route(
             "/api/merchant-api/exports/:kind",
             get(routes::merchant_api::export_csv),
         )

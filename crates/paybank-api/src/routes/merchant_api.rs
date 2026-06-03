@@ -260,6 +260,19 @@ pub async fn list_customers(
     Ok(Json(serde_json::json!({ "customers": customers })))
 }
 
+pub async fn delete_customer(
+    State(state): State<AppState>,
+    Extension(AuthedMerchant(merchant_id)): Extension<AuthedMerchant>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    sqlx::query("DELETE FROM customers WHERE id=$1 AND merchant_id=$2")
+        .bind(id)
+        .bind(merchant_id)
+        .execute(&state.db.pool)
+        .await?;
+    Ok(Json(serde_json::json!({ "id": id, "deleted": true })))
+}
+
 // ── Wallet (Phase 6): add funds (top-up) + withdraw ─────────────────────────
 /// Credit a deposit's ledger entry exactly once (CAS on `credited`).
 async fn settle_deposit(pool: &sqlx::PgPool, deposit_id: Uuid, merchant_id: Uuid, amount: i64) {
@@ -498,19 +511,37 @@ pub async fn report_summary(
 /// Settlement (liability) ledger account, with a running balance. This is the
 /// single source of truth for "what moved my balance" — collections, deposits,
 /// payouts, withdrawals, reversals all land here.
+#[derive(Deserialize)]
+pub struct DateRange {
+    pub from: Option<String>, // YYYY-MM-DD inclusive
+    pub to: Option<String>,   // YYYY-MM-DD inclusive
+}
+fn parse_date(s: &Option<String>) -> Option<chrono::NaiveDate> {
+    s.as_deref()
+        .filter(|x| !x.is_empty())
+        .and_then(|x| chrono::NaiveDate::parse_from_str(x, "%Y-%m-%d").ok())
+}
+
 pub async fn statement(
     State(state): State<AppState>,
     Extension(AuthedMerchant(merchant_id)): Extension<AuthedMerchant>,
+    Query(q): Query<DateRange>,
 ) -> Result<Json<serde_json::Value>, AppError> {
+    let from = parse_date(&q.from);
+    let to = parse_date(&q.to);
     let rows = sqlx::query(
         "SELECT je.description, je.entry_type, je.created_at, lp.direction, lp.amount_cents \
          FROM ledger_postings lp \
          JOIN ledger_accounts la ON la.id = lp.account_id \
          JOIN journal_entries je ON je.id = lp.journal_entry_id \
          WHERE la.merchant_id = $1 AND la.type = 'liability' \
+         AND ($2::date IS NULL OR je.created_at >= $2::date) \
+         AND ($3::date IS NULL OR je.created_at < ($3::date + 1)) \
          ORDER BY je.created_at ASC, je.id ASC LIMIT 1000",
     )
     .bind(merchant_id)
+    .bind(from)
+    .bind(to)
     .fetch_all(&state.db.pool)
     .await?;
 
