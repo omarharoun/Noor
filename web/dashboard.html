@@ -485,13 +485,16 @@ function renderRecurringForm(){
     }catch(e){ if(e.message!=='unauthorized') res.innerHTML=`<div class="flash error" style="margin-top:12px">${e.message}</div>`; }
   });
 }
-function renderInvoiceForm(){
+async function renderInvoiceForm(){
   const el = document.getElementById('inv-form');
+  let customers = [];
+  try { customers = (await api('/api/merchant-api/customers')).customers || []; } catch(_){}
   el.innerHTML = `<div class="mcard"><div class="mcard-head"><h2 class="mcard-title">New invoice</h2></div>
     <div class="mcard-body"><form id="invForm" style="max-width:560px">
       <div class="form-row">
         <div class="field"><label>Customer name</label><input id="i-name" placeholder="Acme Inc"></div>
-        <div class="field"><label>Customer email</label><input id="i-email" type="email" placeholder="billing@acme.com"></div>
+        <div class="field"><label>Customer email</label><input id="i-email" type="email" list="cust-list" placeholder="billing@acme.com">
+          <datalist id="cust-list">${customers.map(c=>`<option value="${c.email}">${c.name}</option>`).join('')}</datalist></div>
       </div>
       <div class="form-row">
         <div class="field"><label>Amount (USD)</label><input id="i-amount" value="100.00" inputmode="decimal"></div>
@@ -501,6 +504,11 @@ function renderInvoiceForm(){
       <div class="form-actions"><button class="mbtn mbtn-primary mbtn-md" type="submit"><i data-lucide="send" style="width:15px;height:15px"></i>Create & send</button></div>
     </form><div id="inv-result"></div></div></div>`;
   icons();
+  // Autofill name when a saved customer email is picked.
+  document.getElementById('i-email').addEventListener('change', e=>{
+    const c = customers.find(c=>c.email===e.target.value);
+    if(c && !document.getElementById('i-name').value) document.getElementById('i-name').value = c.name;
+  });
   document.getElementById('invForm').addEventListener('submit', async e=>{
     e.preventDefault();
     const btn=e.target.querySelector('button'); btn.disabled=true; btn.innerHTML='<span class="spinner" style="width:15px;height:15px;border-width:2px"></span> Creating…';
@@ -670,25 +678,37 @@ async function downloadCsv(kind){
 const RAILS = ['ach','wire','rtp','fednow'];
 async function loadSend(){
   const el = document.getElementById('section-send');
+  let payees = [];
+  try { payees = (await api('/api/merchant-api/payees')).payees || []; } catch(_){}
   el.innerHTML = `<div class="mcard"><div class="mcard-head"><h2 class="mcard-title">Send a payment</h2></div>
     <div class="mcard-body"><form id="sendForm" style="max-width:560px">
-      <div class="field"><label>Payee name</label><input id="p-name" placeholder="Vendor LLC"></div>
-      <div class="form-row">
-        <div class="field"><label>Routing number</label><input id="p-routing" inputmode="numeric" placeholder="021000021"></div>
-        <div class="field"><label>Account number</label><input id="p-account" inputmode="numeric" placeholder="123456789"></div>
-      </div>
-      <div class="form-row">
-        <div class="field"><label>Account type</label><select id="p-type"><option value="checking">Checking</option><option value="savings">Savings</option></select></div>
-        <div class="field"><label>Rail</label><select id="p-rail">${RAILS.map(r=>`<option value="${r}">${r.toUpperCase()}</option>`).join('')}</select></div>
+      <div class="field"><label>Payee</label><select id="p-saved">
+        <option value="">— New payee —</option>
+        ${payees.map(p=>`<option value="${p.id}">${p.name} ••${p.account_last4||''}</option>`).join('')}
+      </select></div>
+      <div id="p-newfields">
+        <div class="field"><label>Payee name</label><input id="p-name" placeholder="Vendor LLC"></div>
+        <div class="form-row">
+          <div class="field"><label>Routing number</label><input id="p-routing" inputmode="numeric" placeholder="021000021"></div>
+          <div class="field"><label>Account number</label><input id="p-account" inputmode="numeric" placeholder="123456789"></div>
+        </div>
+        <div class="form-row">
+          <div class="field"><label>Account type</label><select id="p-type"><option value="checking">Checking</option><option value="savings">Savings</option></select></div>
+          <div class="field" style="display:flex;align-items:flex-end"><label style="display:flex;align-items:center;gap:6px;text-transform:none;font-size:13px;color:var(--ink-2)"><input type="checkbox" id="p-save" style="width:auto">Save this payee</label></div>
+        </div>
       </div>
       <div class="form-row">
         <div class="field"><label>Amount (USD)</label><input id="p-amount" value="10.00" inputmode="decimal"></div>
-        <div class="field"><label>Memo</label><input id="p-memo" placeholder="Optional"></div>
+        <div class="field"><label>Rail</label><select id="p-rail">${RAILS.map(r=>`<option value="${r}">${r.toUpperCase()}</option>`).join('')}</select></div>
       </div>
+      <div class="field"><label>Memo</label><input id="p-memo" placeholder="Optional"></div>
       <div class="flash info">${canApprove() && USER.role==='owner' ? 'As an owner, your payouts send immediately.' : 'Payouts require approval by an admin or owner before they send.'}</div>
       <div class="form-actions"><button class="mbtn mbtn-primary mbtn-md" type="submit"><i data-lucide="send" style="width:15px;height:15px"></i>Send payment</button></div>
     </form><div id="send-result"></div></div></div>`;
   icons();
+  document.getElementById('p-saved').addEventListener('change', e=>{
+    document.getElementById('p-newfields').style.display = e.target.value ? 'none' : '';
+  });
   document.getElementById('sendForm').addEventListener('submit', async e=>{
     e.preventDefault();
     const btn=e.target.querySelector('button'); btn.disabled=true; btn.innerHTML='<span class="spinner" style="width:15px;height:15px;border-width:2px"></span> Sending…';
@@ -696,18 +716,21 @@ async function loadSend(){
     try{
       const cents=Math.round(parseFloat(document.getElementById('p-amount').value)*100);
       if(!cents||cents<1) throw new Error('Enter a valid amount.');
-      const out=await api('/api/merchant-api/payouts',{method:'POST',body:JSON.stringify({
-        payee_name:document.getElementById('p-name').value.trim(),
-        account_type:document.getElementById('p-type').value,
-        routing_number:document.getElementById('p-routing').value.trim(),
-        account_number:document.getElementById('p-account').value.trim(),
-        rail:document.getElementById('p-rail').value,
-        amount:cents,
-        description:document.getElementById('p-memo').value||null,
-      })});
+      const savedId = document.getElementById('p-saved').value;
+      const body = { amount:cents, rail:document.getElementById('p-rail').value, description:document.getElementById('p-memo').value||null };
+      if(savedId){ body.payee_id = savedId; }
+      else {
+        body.payee_name = document.getElementById('p-name').value.trim();
+        body.account_type = document.getElementById('p-type').value;
+        body.routing_number = document.getElementById('p-routing').value.trim();
+        body.account_number = document.getElementById('p-account').value.trim();
+        body.save_payee = document.getElementById('p-save').checked;
+      }
+      const out=await api('/api/merchant-api/payouts',{method:'POST',body:JSON.stringify(body)});
       res.innerHTML = out.needs_approval
         ? `<div class="flash info" style="margin-top:14px">Payout of ${fmt(out.amount)} created and sent for approval.</div>`
         : `<div class="flash success" style="margin-top:14px">Payout of ${fmt(out.amount)} sent (${out.status}).</div>`;
+      if(!savedId && document.getElementById('p-save').checked) loadSend();
     }catch(e){ if(e.message!=='unauthorized') res.innerHTML=`<div class="flash error" style="margin-top:14px">${e.message}</div>`; }
     btn.disabled=false; btn.innerHTML='<i data-lucide="send" style="width:15px;height:15px"></i>Send payment'; icons();
   });

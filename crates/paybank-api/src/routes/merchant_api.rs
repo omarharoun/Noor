@@ -109,6 +109,157 @@ pub struct CreatePaymentLinkResponse {
     pub id: Uuid,
 }
 
+// ── Contacts (Phase 7): payees (vendors) + customers ────────────────────────
+#[derive(Deserialize)]
+pub struct CreatePayeeRequest {
+    pub name: String,
+    pub account_type: String,
+    pub routing_number: String,
+    pub account_number: String,
+    pub email: Option<String>,
+}
+
+pub async fn create_payee(
+    State(state): State<AppState>,
+    Extension(AuthedMerchant(merchant_id)): Extension<AuthedMerchant>,
+    Json(req): Json<CreatePayeeRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let name = req.name.trim();
+    let routing = req.routing_number.trim();
+    let account = req.account_number.trim();
+    let acct_type = req.account_type.trim().to_lowercase();
+    if name.is_empty() {
+        return Err(AppError::BadRequest("payee name is required".into()));
+    }
+    if routing.len() != 9 || !routing.chars().all(|c| c.is_ascii_digit()) {
+        return Err(AppError::BadRequest(
+            "routing number must be 9 digits".into(),
+        ));
+    }
+    if account.len() < 4 || account.len() > 17 || !account.chars().all(|c| c.is_ascii_digit()) {
+        return Err(AppError::BadRequest(
+            "account number must be 4–17 digits".into(),
+        ));
+    }
+    if acct_type != "checking" && acct_type != "savings" {
+        return Err(AppError::BadRequest(
+            "account type must be checking or savings".into(),
+        ));
+    }
+    let (cp, ext) = paybank_payments::onboard_payee(name, &acct_type, routing, account).await?;
+    let last4 = account[account.len() - 4..].to_string();
+    let id = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO payees (id, merchant_id, name, email, mt_counterparty_id, \
+         mt_external_account_id, account_last4, account_type) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)",
+    )
+    .bind(id)
+    .bind(merchant_id)
+    .bind(name)
+    .bind(&req.email)
+    .bind(&cp)
+    .bind(&ext)
+    .bind(&last4)
+    .bind(&acct_type)
+    .execute(&state.db.pool)
+    .await?;
+    Ok(Json(serde_json::json!({
+        "id": id, "name": name, "account_last4": last4, "account_type": acct_type,
+    })))
+}
+
+pub async fn list_payees(
+    State(state): State<AppState>,
+    Extension(AuthedMerchant(merchant_id)): Extension<AuthedMerchant>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let rows = sqlx::query(
+        "SELECT id, name, email, account_last4, account_type FROM payees \
+         WHERE merchant_id=$1 ORDER BY created_at DESC LIMIT 200",
+    )
+    .bind(merchant_id)
+    .fetch_all(&state.db.pool)
+    .await?;
+    let payees: Vec<serde_json::Value> = rows
+        .iter()
+        .map(|r| {
+            serde_json::json!({
+                "id": r.try_get::<Uuid,_>("id").ok(),
+                "name": r.try_get::<String,_>("name").unwrap_or_default(),
+                "email": r.try_get::<Option<String>,_>("email").ok().flatten(),
+                "account_last4": r.try_get::<Option<String>,_>("account_last4").ok().flatten(),
+                "account_type": r.try_get::<Option<String>,_>("account_type").ok().flatten(),
+            })
+        })
+        .collect();
+    Ok(Json(serde_json::json!({ "payees": payees })))
+}
+
+pub async fn delete_payee(
+    State(state): State<AppState>,
+    Extension(AuthedMerchant(merchant_id)): Extension<AuthedMerchant>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    sqlx::query("DELETE FROM payees WHERE id=$1 AND merchant_id=$2")
+        .bind(id)
+        .bind(merchant_id)
+        .execute(&state.db.pool)
+        .await?;
+    Ok(Json(serde_json::json!({ "id": id, "deleted": true })))
+}
+
+#[derive(Deserialize)]
+pub struct CreateCustomerRequest {
+    pub name: String,
+    pub email: String,
+}
+
+pub async fn create_customer(
+    State(state): State<AppState>,
+    Extension(AuthedMerchant(merchant_id)): Extension<AuthedMerchant>,
+    Json(req): Json<CreateCustomerRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    if !req.email.contains('@') {
+        return Err(AppError::BadRequest("a valid email is required".into()));
+    }
+    let id = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO customers (id, merchant_id, name, email) VALUES ($1,$2,$3,$4) \
+         ON CONFLICT (merchant_id, email) DO UPDATE SET name = EXCLUDED.name",
+    )
+    .bind(id)
+    .bind(merchant_id)
+    .bind(req.name.trim())
+    .bind(req.email.trim())
+    .execute(&state.db.pool)
+    .await?;
+    Ok(Json(
+        serde_json::json!({ "name": req.name, "email": req.email }),
+    ))
+}
+
+pub async fn list_customers(
+    State(state): State<AppState>,
+    Extension(AuthedMerchant(merchant_id)): Extension<AuthedMerchant>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let rows = sqlx::query(
+        "SELECT id, name, email FROM customers WHERE merchant_id=$1 ORDER BY name LIMIT 500",
+    )
+    .bind(merchant_id)
+    .fetch_all(&state.db.pool)
+    .await?;
+    let customers: Vec<serde_json::Value> = rows
+        .iter()
+        .map(|r| {
+            serde_json::json!({
+                "id": r.try_get::<Uuid,_>("id").ok(),
+                "name": r.try_get::<String,_>("name").unwrap_or_default(),
+                "email": r.try_get::<String,_>("email").unwrap_or_default(),
+            })
+        })
+        .collect();
+    Ok(Json(serde_json::json!({ "customers": customers })))
+}
+
 // ── Wallet (Phase 6): add funds (top-up) + withdraw ─────────────────────────
 /// Credit a deposit's ledger entry exactly once (CAS on `credited`).
 async fn settle_deposit(pool: &sqlx::PgPool, deposit_id: Uuid, merchant_id: Uuid, amount: i64) {
@@ -645,13 +796,15 @@ async fn execute_payout(
 
 #[derive(Deserialize)]
 pub struct CreatePayoutRequest {
-    pub payee_name: String,
-    pub account_type: String,
-    pub routing_number: String,
-    pub account_number: String,
+    pub payee_id: Option<Uuid>, // a saved payee; if set, bank fields are ignored
+    pub payee_name: Option<String>,
+    pub account_type: Option<String>,
+    pub routing_number: Option<String>,
+    pub account_number: Option<String>,
     pub amount: i64,
     pub rail: Option<String>,
     pub description: Option<String>,
+    pub save_payee: Option<bool>, // save a newly-entered payee for reuse
 }
 
 pub async fn create_payout(
@@ -659,32 +812,9 @@ pub async fn create_payout(
     actor: crate::auth::AuthedMerchantUser,
     Json(req): Json<CreatePayoutRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let payee = req.payee_name.trim();
-    let routing = req.routing_number.trim();
-    let account = req.account_number.trim();
-    let acct_type = req.account_type.trim().to_lowercase();
-    if payee.is_empty() {
-        return Err(AppError::BadRequest("payee name is required".into()));
-    }
-    if routing.len() != 9 || !routing.chars().all(|c| c.is_ascii_digit()) {
-        return Err(AppError::BadRequest(
-            "routing number must be 9 digits".into(),
-        ));
-    }
-    if account.len() < 4 || account.len() > 17 || !account.chars().all(|c| c.is_ascii_digit()) {
-        return Err(AppError::BadRequest(
-            "account number must be 4–17 digits".into(),
-        ));
-    }
-    if acct_type != "checking" && acct_type != "savings" {
-        return Err(AppError::BadRequest(
-            "account type must be checking or savings".into(),
-        ));
-    }
     if req.amount < 1 {
         return Err(AppError::BadRequest("amount must be positive".into()));
     }
-
     let spendable = merchant_spendable(&state.db.pool, actor.merchant_id).await?;
     if req.amount > spendable {
         return Err(AppError::BadRequest(format!(
@@ -693,9 +823,88 @@ pub async fn create_payout(
         )));
     }
 
-    let (cp_id, ext_id) =
-        paybank_payments::onboard_payee(payee, &acct_type, routing, account).await?;
-    let last4 = account[account.len() - 4..].to_string();
+    // Resolve the payee: a saved one (reuse its MT counterparty/account) or new.
+    let (payee, cp_id, ext_id, last4) = if let Some(pid) = req.payee_id {
+        let row = sqlx::query(
+            "SELECT name, mt_counterparty_id, mt_external_account_id, account_last4 \
+             FROM payees WHERE id=$1 AND merchant_id=$2",
+        )
+        .bind(pid)
+        .bind(actor.merchant_id)
+        .fetch_optional(&state.db.pool)
+        .await?
+        .ok_or(AppError::PaymentNotFound)?;
+        let ext: Option<String> = row.try_get("mt_external_account_id").ok().flatten();
+        (
+            row.try_get::<String, _>("name").unwrap_or_default(),
+            row.try_get::<Option<String>, _>("mt_counterparty_id")
+                .ok()
+                .flatten()
+                .unwrap_or_default(),
+            ext.ok_or_else(|| AppError::Internal(anyhow::anyhow!("saved payee missing account")))?,
+            row.try_get::<Option<String>, _>("account_last4")
+                .ok()
+                .flatten()
+                .unwrap_or_default(),
+        )
+    } else {
+        let payee = req.payee_name.as_deref().unwrap_or("").trim().to_string();
+        let routing = req
+            .routing_number
+            .as_deref()
+            .unwrap_or("")
+            .trim()
+            .to_string();
+        let account = req
+            .account_number
+            .as_deref()
+            .unwrap_or("")
+            .trim()
+            .to_string();
+        let acct_type = req
+            .account_type
+            .as_deref()
+            .unwrap_or("checking")
+            .trim()
+            .to_lowercase();
+        if payee.is_empty() {
+            return Err(AppError::BadRequest("payee name is required".into()));
+        }
+        if routing.len() != 9 || !routing.chars().all(|c| c.is_ascii_digit()) {
+            return Err(AppError::BadRequest(
+                "routing number must be 9 digits".into(),
+            ));
+        }
+        if account.len() < 4 || account.len() > 17 || !account.chars().all(|c| c.is_ascii_digit()) {
+            return Err(AppError::BadRequest(
+                "account number must be 4–17 digits".into(),
+            ));
+        }
+        if acct_type != "checking" && acct_type != "savings" {
+            return Err(AppError::BadRequest(
+                "account type must be checking or savings".into(),
+            ));
+        }
+        let (cp, ext) =
+            paybank_payments::onboard_payee(&payee, &acct_type, &routing, &account).await?;
+        let l4 = account[account.len() - 4..].to_string();
+        if req.save_payee.unwrap_or(false) {
+            let _ = sqlx::query(
+                "INSERT INTO payees (merchant_id, name, mt_counterparty_id, \
+                 mt_external_account_id, account_last4, account_type) VALUES ($1,$2,$3,$4,$5,$6)",
+            )
+            .bind(actor.merchant_id)
+            .bind(&payee)
+            .bind(&cp)
+            .bind(&ext)
+            .bind(&l4)
+            .bind(&acct_type)
+            .execute(&state.db.pool)
+            .await;
+        }
+        (payee, cp, ext, l4)
+    };
+
     let rail = req
         .rail
         .clone()
@@ -711,7 +920,7 @@ pub async fn create_payout(
     )
     .bind(id)
     .bind(actor.merchant_id)
-    .bind(payee)
+    .bind(&payee)
     .bind(&cp_id)
     .bind(&ext_id)
     .bind(&last4)
@@ -994,6 +1203,17 @@ pub async fn create_invoice(
     .bind(due)
     .execute(&state.db.pool)
     .await?;
+
+    // Remember the customer for quick-pick next time.
+    let _ = sqlx::query(
+        "INSERT INTO customers (merchant_id, name, email) VALUES ($1,$2,$3) \
+         ON CONFLICT (merchant_id, email) DO UPDATE SET name = EXCLUDED.name",
+    )
+    .bind(merchant_id)
+    .bind(name)
+    .bind(email)
+    .execute(&state.db.pool)
+    .await;
 
     Ok(Json(serde_json::json!({
         "id": id,
