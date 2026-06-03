@@ -517,6 +517,47 @@ pub async fn create_payout(
         .map_err(|e| AppError::ModernTreasuryError(format!("parse payout: {}", e)))
 }
 
+/// Pull funds from an external account into the platform internal account via
+/// ACH debit (wallet top-up). Returns the payment_order (id + status).
+pub async fn pull_funds(
+    external_account_id: &str,
+    amount_cents: i64,
+    description: &str,
+    idempotency_key: &str,
+) -> Result<PaymentOrderResponse, AppError> {
+    let client = mt_client()?;
+    let originating = std::env::var("MT_INTERNAL_ACCOUNT_ID")
+        .map_err(|_| AppError::ModernTreasuryError("MT_INTERNAL_ACCOUNT_ID not set".into()))?;
+    let request = CreatePaymentOrderRequest {
+        order_type: "ach".to_string(),
+        amount: amount_cents,
+        direction: "debit".to_string(),
+        originating_account_id: originating,
+        receiving_account_id: external_account_id.to_string(),
+        receiving_account_type: "external_account".to_string(),
+        remittance_information: description.to_string(),
+        currency: "USD".to_string(),
+    };
+    let resp = client
+        .post(format!("{}/payment_orders", MT_BASE_URL))
+        .header("Idempotency-Key", idempotency_key)
+        .json(&request)
+        .send()
+        .await
+        .map_err(|e| AppError::ModernTreasuryError(e.to_string()))?;
+    if !resp.status().is_success() {
+        let st = resp.status();
+        let b = resp.text().await.unwrap_or_default();
+        return Err(AppError::ModernTreasuryError(format!(
+            "top-up failed: HTTP {} - {}",
+            st, b
+        )));
+    }
+    resp.json()
+        .await
+        .map_err(|e| AppError::ModernTreasuryError(format!("parse top-up: {}", e)))
+}
+
 pub async fn create_transfer(
     internal_account_id: &str,
     counterparty_id: &str,

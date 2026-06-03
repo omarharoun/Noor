@@ -290,8 +290,8 @@ async function loadOverview(){
           <div><div class="bk-sub-l">Currency</div><div class="bk-sub-v">USD</div></div>
         </div>
         <div class="bk-actions">
-          <button class="bk-btn" onclick="switchTab('create')"><i data-lucide="plus" style="width:14px;height:14px"></i>New payment link</button>
-          <button class="bk-btn" onclick="switchTab('payments')"><i data-lucide="receipt" style="width:14px;height:14px"></i>Payments</button>
+          <button class="bk-btn" onclick="walletAction('add')"><i data-lucide="plus" style="width:14px;height:14px"></i>Add funds</button>
+          <button class="bk-btn" onclick="walletAction('withdraw')"><i data-lucide="arrow-down-to-line" style="width:14px;height:14px"></i>Withdraw</button>
         </div>
       </div>
       <div class="mini-stats">
@@ -299,6 +299,7 @@ async function loadOverview(){
         <div class="mini-stat"><div class="ms-ico"><i data-lucide="landmark" style="width:17px;height:17px;color:var(--brand)"></i></div><div><div class="ms-label">Banks supported</div><div class="ms-value" id="ov-banks">0</div></div></div>
       </div>
     </div>
+    <div id="wallet-action"></div>
     <div class="mcard"><div class="mcard-head"><h2 class="mcard-title">Recent payments<span class="live-badge"><span class="live-dot"></span>Live</span></h2></div>
       <div id="ov-activity"><div class="empty"><div class="spinner"></div></div></div></div>`;
   icons();
@@ -559,6 +560,33 @@ function renderBankForm(){
       })});
       loadBank();
     }catch(e){ if(e.message!=='unauthorized') res.innerHTML=`<div class="flash error" style="margin-top:14px">${e.message}</div>`; btn.disabled=false; btn.innerHTML='<i data-lucide="landmark" style="width:15px;height:15px"></i>Add & verify'; icons(); }
+  });
+}
+
+/* ---------- wallet: add funds / withdraw ---------- */
+function walletAction(kind){
+  const el=document.getElementById('wallet-action'); if(!el) return;
+  const isAdd = kind==='add';
+  el.innerHTML=`<div class="mcard"><div class="mcard-body"><form id="walletForm" style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;max-width:520px">
+      <div class="field" style="margin:0;flex:1"><label>${isAdd?'Add funds from your bank (USD)':'Withdraw to your bank (USD)'}</label><input id="w-amount" value="50.00" inputmode="decimal"></div>
+      <button class="mbtn ${isAdd?'mbtn-primary':'mbtn-secondary'} mbtn-md" type="submit">${isAdd?'Add funds':'Withdraw'}</button>
+    </form><div id="wallet-result" style="margin-top:10px"></div>
+    <div class="cell-muted" style="font-size:11px;margin-top:6px">${isAdd?'Pulls from your verified bank via ACH; credited when it settles.':'Sends from your balance to your verified bank (follows approval rules).'}</div></div></div>`;
+  icons();
+  document.getElementById('walletForm').addEventListener('submit', async e=>{
+    e.preventDefault();
+    const btn=e.target.querySelector('button'); btn.disabled=true;
+    const res=document.getElementById('wallet-result');
+    try{
+      const cents=Math.round(parseFloat(document.getElementById('w-amount').value)*100);
+      if(!cents||cents<1) throw new Error('Enter a valid amount.');
+      const path = isAdd ? '/api/merchant-api/balance/add-funds' : '/api/merchant-api/balance/withdraw';
+      const out=await api(path,{method:'POST',body:JSON.stringify({amount:cents})});
+      res.innerHTML=`<div class="flash success">${isAdd
+        ? (out.status==='completed' ? 'Added '+fmt(out.amount)+' to your balance.' : 'Top-up of '+fmt(out.amount)+' initiated — credited when it settles.')
+        : (out.needs_approval ? 'Withdrawal of '+fmt(out.amount)+' sent for approval.' : 'Withdrawal of '+fmt(out.amount)+' sent ('+out.status+').')}</div>`;
+      loadOverview();
+    }catch(e){ if(e.message!=='unauthorized') res.innerHTML=`<div class="flash error">${e.message}</div>`; btn.disabled=false; }
   });
 }
 

@@ -11,6 +11,8 @@ use std::time::Duration;
 use crate::state::AppState;
 use paybank_core::SessionStatus;
 use paybank_db::{idempotency_repo::IdempotencyRepo, ledger_repo::LedgerRepo, session_repo};
+use sqlx::Row;
+use uuid::Uuid;
 
 const TICK_SECS: u64 = 60;
 const STUCK_THRESHOLD_SECS: i64 = 300;
@@ -51,6 +53,56 @@ async fn tick(state: &AppState) -> Result<(), sqlx::Error> {
         Ok(n) if n > 0 => tracing::info!(reaped = n, "pruned expired idempotency keys"),
         Ok(_) => {}
         Err(e) => tracing::warn!(error = %e, "idempotency-key reap failed; will retry next tick"),
+    }
+
+    // Credit settled wallet top-ups (ACH debits that have cleared) exactly once.
+    if let Ok(deps) = sqlx::query(
+        "SELECT id, merchant_id, amount_cents, mt_payment_order_id FROM deposits \
+         WHERE status='pending' AND mt_payment_order_id IS NOT NULL LIMIT 50",
+    )
+    .fetch_all(&state.db.pool)
+    .await
+    {
+        for d in deps {
+            let (Ok(dep_id), Ok(m_id)) = (
+                d.try_get::<Uuid, _>("id"),
+                d.try_get::<Uuid, _>("merchant_id"),
+            ) else {
+                continue;
+            };
+            let amount: i64 = d.try_get("amount_cents").unwrap_or(0);
+            let mt_id: String = match d.try_get::<Option<String>, _>("mt_payment_order_id") {
+                Ok(Some(v)) => v,
+                _ => continue,
+            };
+            match paybank_payments::check_transfer_status("modern_treasury", &mt_id).await {
+                Ok(s) if matches!(s.as_str(), "completed" | "settled") => {
+                    let claimed = sqlx::query(
+                        "UPDATE deposits SET status='completed', credited=true, updated_at=NOW() \
+                         WHERE id=$1 AND credited=false RETURNING id",
+                    )
+                    .bind(dep_id)
+                    .fetch_optional(&state.db.pool)
+                    .await
+                    .ok()
+                    .flatten();
+                    if claimed.is_some() {
+                        let _ =
+                            LedgerRepo::record_deposit(&state.db.pool, m_id, dep_id, amount).await;
+                        tracing::info!(deposit = %dep_id, "credited settled top-up");
+                    }
+                }
+                Ok(s) if matches!(s.as_str(), "failed" | "returned" | "cancelled") => {
+                    let _ = sqlx::query(
+                        "UPDATE deposits SET status='failed', updated_at=NOW() WHERE id=$1 AND credited=false",
+                    )
+                    .bind(dep_id)
+                    .execute(&state.db.pool)
+                    .await;
+                }
+                _ => {}
+            }
+        }
     }
 
     let stuck = session_repo::list_stuck_processing(&state.db.pool, STUCK_THRESHOLD_SECS, BATCH)

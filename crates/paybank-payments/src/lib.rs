@@ -173,6 +173,24 @@ pub async fn send_payout(
     Ok((po.id, po.status))
 }
 
+/// Top-up: ACH-debit a merchant's own external account into the platform
+/// account. Returns (mt_payment_order_id, status).
+pub async fn add_funds(
+    external_account_id: &str,
+    amount_cents: i64,
+    description: &str,
+    idempotency_key: &str,
+) -> Result<(String, String), AppError> {
+    let po = moderntreasury::pull_funds(
+        external_account_id,
+        amount_cents,
+        description,
+        idempotency_key,
+    )
+    .await?;
+    Ok((po.id, po.status))
+}
+
 pub async fn initiate_transfer(
     session_id: uuid::Uuid,
     counterparty_id: &str,

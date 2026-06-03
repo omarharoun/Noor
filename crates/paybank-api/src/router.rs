@@ -217,6 +217,18 @@ pub fn build_router(state: AppState) -> Router {
             post(routes::merchant_api::reject_payout),
         )
         .route(
+            "/api/merchant-api/balance/add-funds",
+            post(routes::merchant_api::add_funds),
+        )
+        .route(
+            "/api/merchant-api/balance/withdraw",
+            post(routes::merchant_api::withdraw),
+        )
+        .route(
+            "/api/merchant-api/deposits",
+            get(routes::merchant_api::list_deposits),
+        )
+        .route(
             "/api/merchant-api/reports/summary",
             get(routes::merchant_api::report_summary),
         )

@@ -109,6 +109,182 @@ pub struct CreatePaymentLinkResponse {
     pub id: Uuid,
 }
 
+// ── Wallet (Phase 6): add funds (top-up) + withdraw ─────────────────────────
+/// Credit a deposit's ledger entry exactly once (CAS on `credited`).
+async fn settle_deposit(pool: &sqlx::PgPool, deposit_id: Uuid, merchant_id: Uuid, amount: i64) {
+    let claimed = sqlx::query(
+        "UPDATE deposits SET status='completed', credited=true, updated_at=NOW() \
+         WHERE id=$1 AND credited=false RETURNING id",
+    )
+    .bind(deposit_id)
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten();
+    if claimed.is_some() {
+        let _ = paybank_db::ledger_repo::LedgerRepo::record_deposit(
+            pool,
+            merchant_id,
+            deposit_id,
+            amount,
+        )
+        .await;
+    }
+}
+
+#[derive(Deserialize)]
+pub struct AmountRequest {
+    pub amount: i64,
+}
+
+pub async fn add_funds(
+    State(state): State<AppState>,
+    Extension(AuthedMerchant(merchant_id)): Extension<AuthedMerchant>,
+    Json(req): Json<AmountRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    if req.amount < 1 {
+        return Err(AppError::BadRequest("amount must be positive".into()));
+    }
+    let row = sqlx::query("SELECT mt_external_account_id FROM merchants WHERE id=$1")
+        .bind(merchant_id)
+        .fetch_one(&state.db.pool)
+        .await?;
+    let ext: Option<String> = row.try_get("mt_external_account_id").ok().flatten();
+    let ext = ext.ok_or_else(|| {
+        AppError::BadRequest("add and verify a bank account before adding funds".into())
+    })?;
+
+    let id = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO deposits (id, merchant_id, amount_cents, currency, status) \
+         VALUES ($1,$2,$3,'USD','pending')",
+    )
+    .bind(id)
+    .bind(merchant_id)
+    .bind(req.amount)
+    .execute(&state.db.pool)
+    .await?;
+
+    let idem = format!("noor-deposit-{}", id);
+    let (mt_id, _) = paybank_payments::add_funds(&ext, req.amount, "Wallet top-up", &idem).await?;
+    let _ = sqlx::query("UPDATE deposits SET mt_payment_order_id=$1 WHERE id=$2")
+        .bind(&mt_id)
+        .bind(id)
+        .execute(&state.db.pool)
+        .await;
+
+    // Poll briefly for settlement (the rail clears in seconds in sandbox);
+    // otherwise the reconcile poller credits it when it completes.
+    let mut status = "pending".to_string();
+    for _ in 0..3 {
+        match paybank_payments::check_transfer_status("modern_treasury", &mt_id).await {
+            Ok(s) if matches!(s.as_str(), "completed" | "settled") => {
+                settle_deposit(&state.db.pool, id, merchant_id, req.amount).await;
+                status = "completed".into();
+                break;
+            }
+            Ok(s) if matches!(s.as_str(), "failed" | "returned" | "cancelled") => {
+                let _ = sqlx::query("UPDATE deposits SET status='failed', updated_at=NOW() WHERE id=$1")
+                    .bind(id)
+                    .execute(&state.db.pool)
+                    .await;
+                status = "failed".into();
+                break;
+            }
+            _ => tokio::time::sleep(std::time::Duration::from_millis(1200)).await,
+        }
+    }
+    Ok(Json(serde_json::json!({
+        "id": id, "amount": req.amount, "status": status,
+    })))
+}
+
+pub async fn list_deposits(
+    State(state): State<AppState>,
+    Extension(AuthedMerchant(merchant_id)): Extension<AuthedMerchant>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let rows = sqlx::query(
+        "SELECT id, amount_cents, status, created_at FROM deposits \
+         WHERE merchant_id=$1 ORDER BY created_at DESC LIMIT 100",
+    )
+    .bind(merchant_id)
+    .fetch_all(&state.db.pool)
+    .await?;
+    let deposits: Vec<serde_json::Value> = rows
+        .iter()
+        .map(|r| {
+            serde_json::json!({
+                "id": r.try_get::<Uuid,_>("id").ok(),
+                "amount": r.try_get::<i64,_>("amount_cents").unwrap_or(0),
+                "status": r.try_get::<String,_>("status").unwrap_or_default(),
+                "created_at": r.try_get::<chrono::DateTime<chrono::Utc>,_>("created_at").ok(),
+            })
+        })
+        .collect();
+    Ok(Json(serde_json::json!({ "deposits": deposits })))
+}
+
+/// Withdraw to the merchant's own onboarded bank account — a payout to self,
+/// following the same dual-control rules as any payout.
+pub async fn withdraw(
+    State(state): State<AppState>,
+    actor: crate::auth::AuthedMerchantUser,
+    Json(req): Json<AmountRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    if req.amount < 1 {
+        return Err(AppError::BadRequest("amount must be positive".into()));
+    }
+    let row = sqlx::query(
+        "SELECT mt_counterparty_id, mt_external_account_id, bank_account_last4 \
+         FROM merchants WHERE id=$1",
+    )
+    .bind(actor.merchant_id)
+    .fetch_one(&state.db.pool)
+    .await?;
+    let cp: Option<String> = row.try_get("mt_counterparty_id").ok().flatten();
+    let ext: Option<String> = row.try_get("mt_external_account_id").ok().flatten();
+    let last4: Option<String> = row.try_get("bank_account_last4").ok().flatten();
+    let ext = ext.ok_or_else(|| {
+        AppError::BadRequest("add and verify a bank account before withdrawing".into())
+    })?;
+
+    let spendable = merchant_spendable(&state.db.pool, actor.merchant_id).await?;
+    if req.amount > spendable {
+        return Err(AppError::BadRequest(format!(
+            "amount exceeds available balance (${:.2})",
+            spendable as f64 / 100.0
+        )));
+    }
+
+    let id = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO payouts (id, merchant_id, payee_name, payee_counterparty_id, \
+         payee_external_account_id, payee_last4, amount_cents, currency, rail, description, \
+         status, initiated_by) VALUES ($1,$2,$3,$4,$5,$6,$7,'USD','ach',$8,'pending_approval',$9)",
+    )
+    .bind(id)
+    .bind(actor.merchant_id)
+    .bind("Withdrawal to bank")
+    .bind(&cp)
+    .bind(&ext)
+    .bind(&last4)
+    .bind(req.amount)
+    .bind("Withdrawal to bank")
+    .bind(actor.user_id)
+    .execute(&state.db.pool)
+    .await?;
+
+    let owner_initiated = actor.role == "owner";
+    let status = if owner_initiated {
+        execute_payout(&state.db.pool, id, actor.user_id).await?
+    } else {
+        "pending_approval".into()
+    };
+    Ok(Json(serde_json::json!({
+        "id": id, "status": status, "amount": req.amount, "needs_approval": !owner_initiated,
+    })))
+}
+
 // ── Accounting (Phase 5): reports + CSV export ──────────────────────────────
 pub async fn report_summary(
     State(state): State<AppState>,

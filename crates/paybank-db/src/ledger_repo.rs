@@ -247,6 +247,40 @@ impl LedgerRepo {
         Ok(())
     }
 
+    /// Record a wallet top-up that has settled: debit Cash (funds arrived),
+    /// credit Settlement (balance the merchant can now spend). Mirrors
+    /// record_settlement but for a deposit (no session). Guard behind a
+    /// deposit-status CAS so a settled deposit credits exactly once.
+    pub async fn record_deposit(
+        pool: &PgPool,
+        merchant_id: Uuid,
+        deposit_id: Uuid,
+        amount_cents: i64,
+    ) -> Result<(), sqlx::Error> {
+        Self::ensure_merchant_accounts(pool, merchant_id).await?;
+        let cash = Self::get_account(pool, "Cash", merchant_id).await?;
+        let settlement = Self::get_account(pool, "Settlement", merchant_id).await?;
+
+        let mut tx = pool.begin().await?;
+        let entry = Self::create_journal_entry(
+            &mut tx,
+            None,
+            &format!("Deposit {}", deposit_id),
+            Some("deposit"),
+        )
+        .await?;
+        Self::create_posting(&mut tx, entry.id, cash.id, amount_cents, "debit").await?;
+        Self::create_posting(&mut tx, entry.id, settlement.id, amount_cents, "credit").await?;
+        if !Self::verify_balance(&mut *tx, entry.id).await? {
+            tx.rollback().await?;
+            return Err(sqlx::Error::Protocol(
+                "deposit entry does not balance; refusing to post".into(),
+            ));
+        }
+        tx.commit().await?;
+        Ok(())
+    }
+
     /// Reverse a payout's ledger debit (credit Settlement back, debit Cash) —
     /// used when the provider call fails after we posted the debit, or on a
     /// returned payout. Restores the merchant's available balance.
