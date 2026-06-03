@@ -171,6 +171,7 @@ html[data-theme="dark"]{
     <button class="nav-item" data-tab="create"><i data-lucide="plus-circle"></i>Payment link</button>
     <button class="nav-item" data-tab="bank"><i data-lucide="landmark"></i>Bank account</button>
     <button class="nav-item" data-tab="team" id="nav-team" style="display:none"><i data-lucide="users"></i>Team</button>
+    <button class="nav-item" data-tab="settings"><i data-lucide="settings"></i>Settings</button>
     <div class="sidebar-foot">
       <div class="brand-divider"></div>
       <div class="foot-user"><span class="avatar" style="width:32px;height:32px;font-size:12px">M</span><div><div class="nm" id="foot-name">Merchant</div><div class="em">Business account</div></div></div>
@@ -197,6 +198,7 @@ html[data-theme="dark"]{
       <div id="section-create" class="section"></div>
       <div id="section-bank" class="section"></div>
       <div id="section-team" class="section"></div>
+      <div id="section-settings" class="section"></div>
     </div>
   </div>
 </div>
@@ -224,6 +226,7 @@ const TITLES = {
   create:   ['Payment link', 'Create a hosted checkout link to collect a payment.'],
   bank:     ['Bank account', 'Your settlement bank account, verified securely.'],
   team:     ['Team', 'People who can access this account, and their roles.'],
+  settings: ['Settings', 'Your business profile and developer settings.'],
 };
 const fmt = (c) => '$' + ((c||0)/100).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
 const TONE = { settled:'success', completed:'success', processing:'info', pending:'warning', authorized:'neutral', failed:'danger', returned:'danger', reversed:'danger', expired:'danger' };
@@ -294,8 +297,71 @@ document.querySelectorAll('.nav-item').forEach(a => a.addEventListener('click', 
   if(tab==='create') renderCreate();
   if(tab==='bank') loadBank();
   if(tab==='team') loadTeam();
+  if(tab==='settings') loadSettings();
 }));
 function switchTab(name){ document.querySelector(`.nav-item[data-tab="${name}"]`)?.click(); }
+
+/* ---------- settings / profile ---------- */
+const esc = (s) => (s==null?'':String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+async function loadSettings(){
+  const el = document.getElementById('section-settings');
+  el.innerHTML = `<div class="mcard"><div class="mcard-body"><div class="empty"><div class="spinner"></div></div></div></div>`;
+  try{
+    const p = await api('/api/merchant-api/merchants/profile');
+    const verified = (p.kyc_status||'')==='verified';
+    el.innerHTML = `
+      <div class="mcard" style="margin-bottom:18px"><div class="mcard-head"><h2 class="mcard-title">Account status</h2>
+        <span class="mbadge tone-${verified?'success':'warning'}"><span class="mbadge-dot"></span>${verified?'Verified':esc(p.kyc_status||'pending')}</span></div>
+        <div class="mcard-body"><dl class="dgrid" style="max-width:460px">
+          <dt>Account name</dt><dd>${esc(p.name)}</dd>
+          <dt>Login email</dt><dd>${esc(p.email)}</dd>
+          <dt>Bank account</dt><dd>${p.bank_linked?'Linked':'Not linked yet'}</dd>
+          <dt>Member since</dt><dd>${p.created_at?new Date(p.created_at).toLocaleDateString():'—'}</dd>
+        </dl></div></div>
+
+      <div class="mcard" style="margin-bottom:18px"><div class="mcard-head"><h2 class="mcard-title">Business profile</h2></div>
+        <div class="mcard-body"><form id="profileForm" style="max-width:560px">
+          <div class="field"><label>Business name</label><input id="s-bizname" value="${esc(p.business_name)}" placeholder="Acme LLC"></div>
+          <div class="form-row">
+            <div class="field"><label>Business type</label>
+              <select id="s-biztype">
+                ${['','sole_proprietor','llc','corporation','partnership','nonprofit'].map(v=>`<option value="${v}" ${(p.business_type||'')===v?'selected':''}>${v?v.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase()):'Select…'}</option>`).join('')}
+              </select></div>
+            <div class="field"><label>Industry</label><input id="s-industry" value="${esc(p.industry_category)}" placeholder="e.g. Professional services"></div>
+          </div>
+          <div class="field"><label>Website</label><input id="s-website" value="${esc(p.website_url)}" placeholder="https://acme.com"></div>
+          <div class="form-actions"><button class="mbtn mbtn-primary mbtn-md" type="submit"><i data-lucide="check" style="width:15px;height:15px"></i>Save profile</button></div>
+        </form><div id="profile-result"></div></div></div>
+
+      <div class="mcard"><div class="mcard-head"><h2 class="mcard-title">Developer</h2></div>
+        <div class="mcard-body"><form id="webhookForm" style="max-width:560px">
+          <div class="field"><label>Webhook URL</label><input id="s-webhook" value="${esc(p.webhook_url)}" placeholder="https://acme.com/webhooks/noor"></div>
+          <div class="flash info">We POST event notifications (payments, payouts, invoices) to this URL.</div>
+          <div class="form-actions"><button class="mbtn mbtn-secondary mbtn-md" type="submit"><i data-lucide="webhook" style="width:15px;height:15px"></i>Save webhook</button></div>
+        </form><div id="webhook-result"></div></div></div>`;
+    icons();
+    document.getElementById('profileForm').addEventListener('submit', e=>saveProfile(e, 'profile-result', {
+      business_name: document.getElementById('s-bizname').value.trim() || null,
+      business_type: document.getElementById('s-biztype').value || null,
+      industry_category: document.getElementById('s-industry').value.trim() || null,
+      website_url: document.getElementById('s-website').value.trim() || null,
+    }));
+    document.getElementById('webhookForm').addEventListener('submit', e=>saveProfile(e, 'webhook-result', {
+      webhook_url: document.getElementById('s-webhook').value.trim() || null,
+    }));
+  }catch(e){ if(e.message!=='unauthorized') el.innerHTML=`<div class="mcard"><div class="mcard-body"><div class="flash error">${e.message}</div></div></div>`; }
+}
+async function saveProfile(e, resultId, body){
+  e.preventDefault();
+  const btn=e.target.querySelector('button'); const orig=btn.innerHTML; btn.disabled=true;
+  btn.innerHTML='<span class="spinner" style="width:15px;height:15px;border-width:2px"></span> Saving…';
+  const res=document.getElementById(resultId); res.innerHTML='';
+  try{
+    await api('/api/merchant-api/merchants/profile', { method:'PUT', body: JSON.stringify(body) });
+    res.innerHTML='<div class="flash success" style="margin-top:14px">Saved.</div>';
+  }catch(err){ res.innerHTML=`<div class="flash error" style="margin-top:14px">${err.message}</div>`; }
+  finally{ btn.disabled=false; btn.innerHTML=orig; icons(); }
+}
 function toggleTheme(){
   const dark = document.documentElement.getAttribute('data-theme')==='dark';
   if(dark){ document.documentElement.removeAttribute('data-theme'); localStorage.setItem('noor_theme','light'); }

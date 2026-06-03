@@ -28,6 +28,9 @@ import {
   Activity,
   LogOut,
   PlusCircle,
+  Send,
+  List,
+  FileText,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -62,6 +65,9 @@ const REGISTRY: Record<string, LucideIcon> = {
   activity: Activity,
   'log-out': LogOut,
   'plus-circle': PlusCircle,
+  send: Send,
+  list: List,
+  'file-text': FileText,
 };
 
 interface IconProps {

@@ -95,7 +95,7 @@ mod tests {
         // --- happy path: FOO_FILE with a trailing newline populates FOO ---
         let p = dir.join("noor_secret_happy");
         let mut f = std::fs::File::create(&p).unwrap();
-        write!(f, "s3cr3t-value\n").unwrap();
+        writeln!(f, "s3cr3t-value").unwrap();
         env::set_var("NOOR_TEST_HAPPY_FILE", p.to_str().unwrap());
         env::remove_var("NOOR_TEST_HAPPY");
 

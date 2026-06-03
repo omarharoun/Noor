@@ -11,4 +11,7 @@ pub async fn push(pool: &PgPool, merchant_id: Uuid, kind: &str, message: &str) {
             .bind(message)
             .execute(pool)
             .await;
+    // Also email the notification (no-op until SENDGRID_API_KEY is set).
+    let to = std::env::var("EMAIL_TO").unwrap_or_else(|_| "noreply@norhadi.com".to_string());
+    paybank_payments::send_email(&to, &format!("Noor — {kind}"), message).await;
 }

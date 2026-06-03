@@ -10,6 +10,8 @@ import { Merchants } from './pages/Merchants';
 import { Banks } from './pages/Banks';
 import { Settlements } from './pages/Settlements';
 import { Payouts } from './pages/Payouts';
+import { Invoices } from './pages/Invoices';
+import { Deposits } from './pages/Deposits';
 import { Webhooks } from './pages/Webhooks';
 import { Health } from './pages/Health';
 import { Operators } from './pages/Operators';
@@ -21,6 +23,8 @@ export type PageId =
   | 'banks'
   | 'settlements'
   | 'payouts'
+  | 'invoices'
+  | 'deposits'
   | 'webhooks'
   | 'health'
   | 'operators';
@@ -40,6 +44,8 @@ const TITLES: Record<PageId, [string, string]> = {
   banks: ['Banks', 'Supported institutions and rail coverage'],
   settlements: ['Settlements', 'Merchant balances and payouts'],
   payouts: ['Payouts', 'Outbound payments across merchants'],
+  invoices: ['Invoices', 'Billing activity across merchants'],
+  deposits: ['Deposits', 'Wallet top-ups across merchants'],
   webhooks: ['Webhooks', 'Event delivery log and retries'],
   health: ['Health', 'Issues and anomalies to act on'],
   operators: ['Operators', 'Console users and their roles'],
@@ -76,6 +82,8 @@ function Console() {
     { id: 'banks' as const, label: 'Banks', icon: 'landmark' },
     { id: 'settlements' as const, label: 'Settlements', icon: 'wallet' },
     { id: 'payouts' as const, label: 'Payouts', icon: 'send' },
+    { id: 'invoices' as const, label: 'Invoices', icon: 'file-text' },
+    { id: 'deposits' as const, label: 'Deposits', icon: 'download' },
     { id: 'webhooks' as const, label: 'Webhooks', icon: 'webhook', count: failedWebhooks },
     { id: 'health' as const, label: 'Health', icon: 'activity' },
     { id: 'operators' as const, label: 'Operators', icon: 'users' },
@@ -102,11 +110,11 @@ function Console() {
           <NavItem key={n.id} n={n} active={page === n.id} onClick={() => setPage(n.id)} />
         ))}
         <div className="nav-section">Money</div>
-        {nav.slice(4, 6).map((n) => (
+        {nav.slice(4, 8).map((n) => (
           <NavItem key={n.id} n={n} active={page === n.id} onClick={() => setPage(n.id)} />
         ))}
         <div className="nav-section">System</div>
-        {nav.slice(6).map((n) => (
+        {nav.slice(8).map((n) => (
           <NavItem key={n.id} n={n} active={page === n.id} onClick={() => setPage(n.id)} />
         ))}
         <div className="sidebar-foot">
@@ -150,6 +158,8 @@ function Console() {
           {page === 'banks' && <Banks />}
           {page === 'settlements' && <Settlements />}
           {page === 'payouts' && <Payouts />}
+          {page === 'invoices' && <Invoices />}
+          {page === 'deposits' && <Deposits />}
           {page === 'webhooks' && <Webhooks />}
           {page === 'health' && <Health />}
           {page === 'operators' && <Operators />}

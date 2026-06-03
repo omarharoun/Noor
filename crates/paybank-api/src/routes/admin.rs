@@ -39,6 +39,60 @@ pub async fn list_all_payouts(
     Ok(Json(serde_json::json!({ "payouts": payouts })))
 }
 
+/// Operator oversight: all invoices across merchants.
+pub async fn list_all_invoices(
+    State(state): State<AppState>,
+    Extension(AuthedOperator(_claims)): Extension<AuthedOperator>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let rows = sqlx::query(
+        "SELECT i.number, i.customer_name, i.amount_cents, i.status, i.created_at, m.name AS merchant_name \
+         FROM invoices i JOIN merchants m ON m.id = i.merchant_id \
+         ORDER BY i.created_at DESC LIMIT 200",
+    )
+    .fetch_all(&state.db.pool)
+    .await?;
+    let invoices: Vec<serde_json::Value> = rows
+        .iter()
+        .map(|r| {
+            serde_json::json!({
+                "merchant": r.try_get::<String,_>("merchant_name").unwrap_or_default(),
+                "number": r.try_get::<Option<String>,_>("number").ok().flatten(),
+                "customer": r.try_get::<String,_>("customer_name").unwrap_or_default(),
+                "amount": r.try_get::<i64,_>("amount_cents").unwrap_or(0),
+                "status": r.try_get::<String,_>("status").unwrap_or_default(),
+                "created_at": r.try_get::<chrono::DateTime<chrono::Utc>,_>("created_at").ok(),
+            })
+        })
+        .collect();
+    Ok(Json(serde_json::json!({ "invoices": invoices })))
+}
+
+/// Operator oversight: all wallet top-ups (deposits) across merchants.
+pub async fn list_all_deposits(
+    State(state): State<AppState>,
+    Extension(AuthedOperator(_claims)): Extension<AuthedOperator>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let rows = sqlx::query(
+        "SELECT d.amount_cents, d.status, d.created_at, m.name AS merchant_name \
+         FROM deposits d JOIN merchants m ON m.id = d.merchant_id \
+         ORDER BY d.created_at DESC LIMIT 200",
+    )
+    .fetch_all(&state.db.pool)
+    .await?;
+    let deposits: Vec<serde_json::Value> = rows
+        .iter()
+        .map(|r| {
+            serde_json::json!({
+                "merchant": r.try_get::<String,_>("merchant_name").unwrap_or_default(),
+                "amount": r.try_get::<i64,_>("amount_cents").unwrap_or(0),
+                "status": r.try_get::<String,_>("status").unwrap_or_default(),
+                "created_at": r.try_get::<chrono::DateTime<chrono::Utc>,_>("created_at").ok(),
+            })
+        })
+        .collect();
+    Ok(Json(serde_json::json!({ "deposits": deposits })))
+}
+
 /// Project a Merchant to a safe response — NEVER expose password_hash or api_key
 /// to the operator console (P0: these were previously serialized in full).
 fn redact_merchant(m: &Merchant) -> serde_json::Value {

@@ -34,6 +34,40 @@ pub async fn screen_customer(name: &str, _address: &str) -> Result<Screen, AppEr
     })
 }
 
+/// Fail-closed gate run before a session is authorized:
+///   1. the merchant must be KYC-verified, and
+///   2. the customer must clear sanctions screening.
+///
+/// Any screening provider error denies.
+pub async fn gate(
+    pool: &PgPool,
+    merchant_id: Uuid,
+    customer_name: &str,
+    customer_address: &str,
+) -> Result<(), AppError> {
+    let merchant = admin_repo::get_merchant(pool, merchant_id)
+        .await?
+        .ok_or(AppError::MerchantNotFound)?;
+    if merchant.kyc_status != "verified" {
+        return Err(AppError::ComplianceRejected(format!(
+            "merchant KYC not verified (status: {})",
+            merchant.kyc_status
+        )));
+    }
+
+    match screen_customer(customer_name, customer_address).await {
+        Ok(s) if s.cleared => Ok(()),
+        Ok(s) => Err(AppError::ComplianceRejected(
+            s.reason
+                .unwrap_or_else(|| "sanctions screening failed".into()),
+        )),
+        // Fail closed: never authorize money movement when screening is down.
+        Err(_) => Err(AppError::ComplianceRejected(
+            "sanctions screening temporarily unavailable".into(),
+        )),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -98,39 +132,5 @@ mod tests {
         let s = screen_customer("", "").await.unwrap();
         assert!(s.cleared, "an empty name matches no deny term");
         assert!(s.reason.is_none());
-    }
-}
-
-/// Fail-closed gate run before a session is authorized:
-///   1. the merchant must be KYC-verified, and
-///   2. the customer must clear sanctions screening.
-///
-/// Any screening provider error denies.
-pub async fn gate(
-    pool: &PgPool,
-    merchant_id: Uuid,
-    customer_name: &str,
-    customer_address: &str,
-) -> Result<(), AppError> {
-    let merchant = admin_repo::get_merchant(pool, merchant_id)
-        .await?
-        .ok_or(AppError::MerchantNotFound)?;
-    if merchant.kyc_status != "verified" {
-        return Err(AppError::ComplianceRejected(format!(
-            "merchant KYC not verified (status: {})",
-            merchant.kyc_status
-        )));
-    }
-
-    match screen_customer(customer_name, customer_address).await {
-        Ok(s) if s.cleared => Ok(()),
-        Ok(s) => Err(AppError::ComplianceRejected(
-            s.reason
-                .unwrap_or_else(|| "sanctions screening failed".into()),
-        )),
-        // Fail closed: never authorize money movement when screening is down.
-        Err(_) => Err(AppError::ComplianceRejected(
-            "sanctions screening temporarily unavailable".into(),
-        )),
     }
 }

@@ -114,6 +114,8 @@ pub fn build_router(state: AppState) -> Router {
         )
         .route("/api/admin/health", get(routes::admin::get_health))
         .route("/api/admin/payouts", get(routes::admin::list_all_payouts))
+        .route("/api/admin/invoices", get(routes::admin::list_all_invoices))
+        .route("/api/admin/deposits", get(routes::admin::list_all_deposits))
         .route("/api/admin/audit", get(routes::admin::get_audit))
         .route(
             "/api/admin/operators",
@@ -166,7 +168,8 @@ pub fn build_router(state: AppState) -> Router {
         )
         .route(
             "/api/merchant-api/merchants/profile",
-            get(routes::merchant_api::get_merchant_profile),
+            get(routes::merchant_api::get_merchant_profile)
+                .put(routes::merchant_api::update_merchant_profile),
         )
         .route(
             "/api/merchant-api/payments",

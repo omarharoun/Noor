@@ -194,9 +194,27 @@ export interface AdminPayout {
   created_at: string | null;
 }
 
+export interface AdminInvoice {
+  merchant: string;
+  number: string | null;
+  customer: string;
+  amount: number;
+  status: string;
+  created_at: string | null;
+}
+
+export interface AdminDeposit {
+  merchant: string;
+  amount: number;
+  status: string;
+  created_at: string | null;
+}
+
 export const api = {
   stats: () => get<DashboardStats>('/stats'),
   payoutsAll: () => get<{ payouts: AdminPayout[] }>('/payouts'),
+  invoicesAll: () => get<{ invoices: AdminInvoice[] }>('/invoices'),
+  depositsAll: () => get<{ deposits: AdminDeposit[] }>('/deposits'),
   sessions: (params?: { limit?: number; offset?: number; status?: string; rail?: string }) =>
     get<{ sessions: PaymentSession[]; total: number }>('/sessions', params),
   merchants: (params?: { limit?: number; offset?: number }) =>

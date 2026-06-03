@@ -1,10 +1,12 @@
 pub mod column;
+pub mod email;
 pub mod moderntreasury;
 pub mod rail;
 
 use paybank_core::{AppError, PaymentRail};
 use serde::{Deserialize, Serialize};
 
+pub use email::send_email;
 pub use rail::choose_rail;
 
 /// Bank account details used to create a counterparty/external account.

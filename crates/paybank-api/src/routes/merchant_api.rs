@@ -42,12 +42,75 @@ pub async fn get_balance(
     }))
 }
 
-pub async fn get_merchant_profile() -> Result<Json<serde_json::Value>, AppError> {
+pub async fn get_merchant_profile(
+    State(state): State<AppState>,
+    Extension(AuthedMerchant(merchant_id)): Extension<AuthedMerchant>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let r = sqlx::query(
+        "SELECT name, email, business_name, business_type, industry_category, website_url, \
+         webhook_url, status, kyc_status, onboarding_completed_at, \
+         mt_external_account_id, created_at \
+         FROM merchants WHERE id = $1",
+    )
+    .bind(merchant_id)
+    .fetch_one(&state.db.pool)
+    .await?;
+    let bank_linked = r
+        .try_get::<Option<String>, _>("mt_external_account_id")
+        .ok()
+        .flatten()
+        .is_some();
     Ok(Json(serde_json::json!({
-        "status": "active",
-        "kyc_status": "verified",
-        "onboarding_completed_at": null
+        "name": r.try_get::<String,_>("name").unwrap_or_default(),
+        "email": r.try_get::<String,_>("email").unwrap_or_default(),
+        "business_name": r.try_get::<Option<String>,_>("business_name").ok().flatten(),
+        "business_type": r.try_get::<Option<String>,_>("business_type").ok().flatten(),
+        "industry_category": r.try_get::<Option<String>,_>("industry_category").ok().flatten(),
+        "website_url": r.try_get::<Option<String>,_>("website_url").ok().flatten(),
+        "webhook_url": r.try_get::<Option<String>,_>("webhook_url").ok().flatten(),
+        "status": r.try_get::<String,_>("status").unwrap_or_else(|_| "active".into()),
+        "kyc_status": r.try_get::<String,_>("kyc_status").unwrap_or_else(|_| "verified".into()),
+        "bank_linked": bank_linked,
+        "onboarding_completed_at": r.try_get::<Option<chrono::DateTime<chrono::Utc>>,_>("onboarding_completed_at").ok().flatten(),
+        "created_at": r.try_get::<chrono::DateTime<chrono::Utc>,_>("created_at").ok(),
     })))
+}
+
+#[derive(Deserialize)]
+pub struct UpdateProfileRequest {
+    pub business_name: Option<String>,
+    pub business_type: Option<String>,
+    pub industry_category: Option<String>,
+    pub website_url: Option<String>,
+    pub webhook_url: Option<String>,
+}
+
+/// Merchant self-service profile update. Only business-profile and webhook
+/// fields are editable here; identity/KYC fields are operator-controlled.
+pub async fn update_merchant_profile(
+    State(state): State<AppState>,
+    Extension(AuthedMerchant(merchant_id)): Extension<AuthedMerchant>,
+    Json(req): Json<UpdateProfileRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    sqlx::query(
+        "UPDATE merchants SET \
+           business_name     = COALESCE($2, business_name), \
+           business_type     = COALESCE($3, business_type), \
+           industry_category = COALESCE($4, industry_category), \
+           website_url       = COALESCE($5, website_url), \
+           webhook_url       = COALESCE($6, webhook_url), \
+           updated_at        = NOW() \
+         WHERE id = $1",
+    )
+    .bind(merchant_id)
+    .bind(&req.business_name)
+    .bind(&req.business_type)
+    .bind(&req.industry_category)
+    .bind(&req.website_url)
+    .bind(&req.webhook_url)
+    .execute(&state.db.pool)
+    .await?;
+    get_merchant_profile(State(state), Extension(AuthedMerchant(merchant_id))).await
 }
 
 #[derive(Deserialize)]
