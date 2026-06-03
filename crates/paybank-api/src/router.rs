@@ -113,6 +113,7 @@ pub fn build_router(state: AppState) -> Router {
             post(routes::admin::retry_webhook),
         )
         .route("/api/admin/health", get(routes::admin::get_health))
+        .route("/api/admin/payouts", get(routes::admin::list_all_payouts))
         .route("/api/admin/audit", get(routes::admin::get_audit))
         .route(
             "/api/admin/operators",

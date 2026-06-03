@@ -8,7 +8,36 @@ use axum::{
 use paybank_core::{AppError, Merchant};
 use paybank_db::{admin_repo, audit_repo, operator_repo};
 use serde::Deserialize;
+use sqlx::Row;
 use uuid::Uuid;
+
+/// Operator oversight: all payouts across merchants (read-only).
+pub async fn list_all_payouts(
+    State(state): State<AppState>,
+    Extension(AuthedOperator(_claims)): Extension<AuthedOperator>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let rows = sqlx::query(
+        "SELECT p.payee_name, p.amount_cents, p.rail, p.status, p.created_at, m.name AS merchant_name \
+         FROM payouts p JOIN merchants m ON m.id = p.merchant_id \
+         ORDER BY p.created_at DESC LIMIT 200",
+    )
+    .fetch_all(&state.db.pool)
+    .await?;
+    let payouts: Vec<serde_json::Value> = rows
+        .iter()
+        .map(|r| {
+            serde_json::json!({
+                "merchant": r.try_get::<String,_>("merchant_name").unwrap_or_default(),
+                "payee": r.try_get::<String,_>("payee_name").unwrap_or_default(),
+                "amount": r.try_get::<i64,_>("amount_cents").unwrap_or(0),
+                "rail": r.try_get::<String,_>("rail").unwrap_or_default(),
+                "status": r.try_get::<String,_>("status").unwrap_or_default(),
+                "created_at": r.try_get::<chrono::DateTime<chrono::Utc>,_>("created_at").ok(),
+            })
+        })
+        .collect();
+    Ok(Json(serde_json::json!({ "payouts": payouts })))
+}
 
 /// Project a Merchant to a safe response — NEVER expose password_hash or api_key
 /// to the operator console (P0: these were previously serialized in full).

@@ -185,8 +185,18 @@ async function post<T>(path: string, body?: unknown): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+export interface AdminPayout {
+  merchant: string;
+  payee: string;
+  amount: number;
+  rail: string;
+  status: string;
+  created_at: string | null;
+}
+
 export const api = {
   stats: () => get<DashboardStats>('/stats'),
+  payoutsAll: () => get<{ payouts: AdminPayout[] }>('/payouts'),
   sessions: (params?: { limit?: number; offset?: number; status?: string; rail?: string }) =>
     get<{ sessions: PaymentSession[]; total: number }>('/sessions', params),
   merchants: (params?: { limit?: number; offset?: number }) =>

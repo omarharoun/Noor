@@ -9,6 +9,7 @@ import { Sessions } from './pages/Sessions';
 import { Merchants } from './pages/Merchants';
 import { Banks } from './pages/Banks';
 import { Settlements } from './pages/Settlements';
+import { Payouts } from './pages/Payouts';
 import { Webhooks } from './pages/Webhooks';
 import { Health } from './pages/Health';
 import { Operators } from './pages/Operators';
@@ -19,6 +20,7 @@ export type PageId =
   | 'merchants'
   | 'banks'
   | 'settlements'
+  | 'payouts'
   | 'webhooks'
   | 'health'
   | 'operators';
@@ -37,6 +39,7 @@ const TITLES: Record<PageId, [string, string]> = {
   merchants: ['Merchants', 'Accounts, onboarding and KYC status'],
   banks: ['Banks', 'Supported institutions and rail coverage'],
   settlements: ['Settlements', 'Merchant balances and payouts'],
+  payouts: ['Payouts', 'Outbound payments across merchants'],
   webhooks: ['Webhooks', 'Event delivery log and retries'],
   health: ['Health', 'Issues and anomalies to act on'],
   operators: ['Operators', 'Console users and their roles'],
@@ -72,6 +75,7 @@ function Console() {
     { id: 'merchants' as const, label: 'Merchants', icon: 'store', count: merchants.length || undefined },
     { id: 'banks' as const, label: 'Banks', icon: 'landmark' },
     { id: 'settlements' as const, label: 'Settlements', icon: 'wallet' },
+    { id: 'payouts' as const, label: 'Payouts', icon: 'send' },
     { id: 'webhooks' as const, label: 'Webhooks', icon: 'webhook', count: failedWebhooks },
     { id: 'health' as const, label: 'Health', icon: 'activity' },
     { id: 'operators' as const, label: 'Operators', icon: 'users' },
@@ -145,6 +149,7 @@ function Console() {
           {page === 'merchants' && <Merchants />}
           {page === 'banks' && <Banks />}
           {page === 'settlements' && <Settlements />}
+          {page === 'payouts' && <Payouts />}
           {page === 'webhooks' && <Webhooks />}
           {page === 'health' && <Health />}
           {page === 'operators' && <Operators />}
