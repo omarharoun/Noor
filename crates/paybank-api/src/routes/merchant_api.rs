@@ -184,10 +184,12 @@ pub async fn add_funds(
                 break;
             }
             Ok(s) if matches!(s.as_str(), "failed" | "returned" | "cancelled") => {
-                let _ = sqlx::query("UPDATE deposits SET status='failed', updated_at=NOW() WHERE id=$1")
-                    .bind(id)
-                    .execute(&state.db.pool)
-                    .await;
+                let _ = sqlx::query(
+                    "UPDATE deposits SET status='failed', updated_at=NOW() WHERE id=$1",
+                )
+                .bind(id)
+                .execute(&state.db.pool)
+                .await;
                 status = "failed".into();
                 break;
             }
