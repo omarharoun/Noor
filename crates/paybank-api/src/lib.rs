@@ -1,6 +1,7 @@
 pub mod auth;
 pub mod compliance;
 pub mod idempotency;
+pub mod notify;
 pub mod reconcile;
 pub mod recurring;
 pub mod router;

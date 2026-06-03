@@ -89,6 +89,16 @@ async fn tick(state: &AppState) -> Result<(), sqlx::Error> {
                     if claimed.is_some() {
                         let _ =
                             LedgerRepo::record_deposit(&state.db.pool, m_id, dep_id, amount).await;
+                        crate::notify::push(
+                            &state.db.pool,
+                            m_id,
+                            "deposit",
+                            &format!(
+                                "Top-up of ${:.2} credited to your balance",
+                                amount as f64 / 100.0
+                            ),
+                        )
+                        .await;
                         tracing::info!(deposit = %dep_id, "credited settled top-up");
                     }
                 }

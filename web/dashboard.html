@@ -181,6 +181,7 @@ html[data-theme="dark"]{
       <h1 id="page-title">Overview</h1>
       <div class="spacer"></div>
       <button class="mbtn mbtn-primary mbtn-sm" onclick="switchTab('create')"><i data-lucide="plus" style="width:14px;height:14px"></i>New payment link</button>
+      <button class="icon-btn" title="Notifications" onclick="toggleNotifs()" style="position:relative"><i data-lucide="bell" style="width:17px;height:17px"></i><span id="notif-badge" style="display:none;position:absolute;top:-5px;right:-5px;min-width:16px;height:16px;border-radius:99px;background:var(--danger);color:#fff;font-size:9px;font-weight:700;align-items:center;justify-content:center;padding:0 3px">0</span></button>
       <button class="icon-btn" title="Toggle theme" onclick="toggleTheme()"><i data-lucide="moon" style="width:17px;height:17px"></i></button>
       <button class="icon-btn" title="Sign out" onclick="logout()"><i data-lucide="log-out" style="width:17px;height:17px"></i></button>
     </header>
@@ -871,9 +872,35 @@ function renderInvite(){
   });
 }
 
+/* ---------- notifications ---------- */
+let NOTIFS = [];
+async function loadNotifications(){
+  try{
+    const d = await api('/api/merchant-api/notifications');
+    NOTIFS = d.notifications || [];
+    const b = document.getElementById('notif-badge');
+    if(b){ if(d.unread>0){ b.style.display='inline-flex'; b.textContent = d.unread>9?'9+':d.unread; } else b.style.display='none'; }
+  }catch(_){}
+}
+function toggleNotifs(){
+  const ex = document.getElementById('notif-panel'); if(ex){ ex.remove(); return; }
+  const p = document.createElement('div'); p.id='notif-panel';
+  p.style.cssText='position:fixed;top:58px;right:24px;width:340px;max-height:62vh;overflow:auto;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);box-shadow:var(--shadow-md);z-index:60';
+  p.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-bottom:1px solid var(--border)"><strong style="font-size:13px;color:var(--ink)">Notifications</strong><button class="mbtn mbtn-ghost mbtn-sm" onclick="markNotifsRead()">Mark all read</button></div>`
+    + (NOTIFS.length ? NOTIFS.map(n=>`<div style="padding:10px 12px;border-bottom:1px solid var(--border);${n.read?'':'background:var(--brand-soft)'}">
+        <div style="font-size:13px;color:var(--ink)">${n.message}</div>
+        <div class="cell-muted" style="font-size:11px;margin-top:2px">${n.created_at?new Date(n.created_at).toLocaleString():''}</div></div>`).join('')
+       : `<div class="empty" style="padding:24px">No notifications yet.</div>`);
+  document.body.appendChild(p);
+  icons();
+}
+async function markNotifsRead(){ try{ await api('/api/merchant-api/notifications/read',{method:'POST'}); }catch(_){} const p=document.getElementById('notif-panel'); if(p) p.remove(); loadNotifications(); }
+
 /* ---------- boot ---------- */
 async function boot(){
   document.getElementById('foot-name').textContent = USER ? USER.name : 'Merchant';
+  loadNotifications();
+  if(!window._notifTimer) window._notifTimer = setInterval(()=>{ if(TOKEN) loadNotifications(); }, 30000);
   const fe = document.querySelector('.foot-user .em'); if(fe && USER) fe.textContent = USER.role;
   // Role-gated tabs.
   document.getElementById('nav-approvals').style.display = canApprove() ? '' : 'none';

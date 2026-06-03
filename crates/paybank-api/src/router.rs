@@ -237,6 +237,14 @@ pub fn build_router(state: AppState) -> Router {
             get(routes::merchant_api::statement),
         )
         .route(
+            "/api/merchant-api/notifications",
+            get(routes::merchant_api::list_notifications),
+        )
+        .route(
+            "/api/merchant-api/notifications/read",
+            post(routes::merchant_api::mark_notifications_read),
+        )
+        .route(
             "/api/merchant-api/payees",
             get(routes::merchant_api::list_payees).post(routes::merchant_api::create_payee),
         )

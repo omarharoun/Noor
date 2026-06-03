@@ -273,6 +273,49 @@ pub async fn delete_customer(
     Ok(Json(serde_json::json!({ "id": id, "deleted": true })))
 }
 
+// ── Notifications (Phase 8) ─────────────────────────────────────────────────
+pub async fn list_notifications(
+    State(state): State<AppState>,
+    Extension(AuthedMerchant(merchant_id)): Extension<AuthedMerchant>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let rows = sqlx::query(
+        "SELECT id, kind, message, read, created_at FROM notifications \
+         WHERE merchant_id=$1 ORDER BY created_at DESC LIMIT 50",
+    )
+    .bind(merchant_id)
+    .fetch_all(&state.db.pool)
+    .await?;
+    let unread = rows
+        .iter()
+        .filter(|r| !r.try_get::<bool, _>("read").unwrap_or(true))
+        .count();
+    let items: Vec<serde_json::Value> = rows
+        .iter()
+        .map(|r| {
+            serde_json::json!({
+                "kind": r.try_get::<String,_>("kind").unwrap_or_default(),
+                "message": r.try_get::<String,_>("message").unwrap_or_default(),
+                "read": r.try_get::<bool,_>("read").unwrap_or(false),
+                "created_at": r.try_get::<chrono::DateTime<chrono::Utc>,_>("created_at").ok(),
+            })
+        })
+        .collect();
+    Ok(Json(
+        serde_json::json!({ "unread": unread, "notifications": items }),
+    ))
+}
+
+pub async fn mark_notifications_read(
+    State(state): State<AppState>,
+    Extension(AuthedMerchant(merchant_id)): Extension<AuthedMerchant>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    sqlx::query("UPDATE notifications SET read=true WHERE merchant_id=$1 AND read=false")
+        .bind(merchant_id)
+        .execute(&state.db.pool)
+        .await?;
+    Ok(Json(serde_json::json!({ "ok": true })))
+}
+
 // ── Wallet (Phase 6): add funds (top-up) + withdraw ─────────────────────────
 /// Credit a deposit's ledger entry exactly once (CAS on `credited`).
 async fn settle_deposit(pool: &sqlx::PgPool, deposit_id: Uuid, merchant_id: Uuid, amount: i64) {
@@ -291,6 +334,16 @@ async fn settle_deposit(pool: &sqlx::PgPool, deposit_id: Uuid, merchant_id: Uuid
             merchant_id,
             deposit_id,
             amount,
+        )
+        .await;
+        crate::notify::push(
+            pool,
+            merchant_id,
+            "deposit",
+            &format!(
+                "Top-up of ${:.2} credited to your balance",
+                amount as f64 / 100.0
+            ),
         )
         .await;
     }
@@ -969,6 +1022,21 @@ pub async fn create_payout(
         "pending_approval".into()
     };
 
+    let note = if owner_initiated {
+        format!(
+            "Payout of ${:.2} to {} sent",
+            req.amount as f64 / 100.0,
+            payee
+        )
+    } else {
+        format!(
+            "Payout of ${:.2} to {} needs approval",
+            req.amount as f64 / 100.0,
+            payee
+        )
+    };
+    crate::notify::push(&state.db.pool, actor.merchant_id, "payout", &note).await;
+
     Ok(Json(serde_json::json!({
         "id": id,
         "status": status,
@@ -1244,6 +1312,18 @@ pub async fn create_invoice(
     .bind(name)
     .bind(email)
     .execute(&state.db.pool)
+    .await;
+
+    crate::notify::push(
+        &state.db.pool,
+        merchant_id,
+        "invoice",
+        &format!(
+            "Invoice {} for ${:.2} created",
+            created.number.clone().unwrap_or_default(),
+            created.total_amount as f64 / 100.0
+        ),
+    )
     .await;
 
     Ok(Json(serde_json::json!({
