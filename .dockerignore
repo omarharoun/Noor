@@ -23,3 +23,9 @@ docs
 appsmith/
 drop_all.py
 run_migrations.py
+
+# Cloudflare Worker shim + root npm project (not part of the container image)
+worker/
+wrangler.jsonc
+package.json
+package-lock.json

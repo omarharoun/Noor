@@ -1,0 +1,19 @@
+{
+  "name": "noor",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev",
+    "tail": "wrangler tail",
+    "secret": "wrangler secret put",
+    "secrets:list": "wrangler secret list"
+  },
+  "dependencies": {
+    "@cloudflare/containers": "^0.3.6"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260604.1",
+    "wrangler": "^4.98.0"
+  }
+}

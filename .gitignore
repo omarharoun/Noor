@@ -9,3 +9,7 @@ __pycache__/
 *.tsbuildinfo
 .design_handoff_tmp/
 .claude/
+
+# Cloudflare Workers / npm (root)
+/node_modules/
+.wrangler/
