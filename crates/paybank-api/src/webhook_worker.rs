@@ -45,6 +45,16 @@ pub fn spawn(state: AppState) {
     });
 }
 
+/// Drain the outbound-webhook outbox once (builds its own HTTP client). Used by
+/// the cron endpoint when in-process workers are disabled.
+pub async fn run_once(state: &AppState) -> Result<(), sqlx::Error> {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(DELIVERY_TIMEOUT_SECS))
+        .build()
+        .unwrap_or_default();
+    tick(state, &client).await
+}
+
 async fn tick(state: &AppState, client: &reqwest::Client) -> Result<(), sqlx::Error> {
     let due = webhook_repo::claim_due(&state.db.pool, BATCH).await?;
     for ev in due {

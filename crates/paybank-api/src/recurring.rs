@@ -19,7 +19,9 @@ pub fn spawn(state: AppState) {
     });
 }
 
-async fn tick(state: &AppState) -> Result<(), sqlx::Error> {
+/// Issue all due recurring invoices once. The atomic `next_run` advance claims
+/// templates, so it's safe to run from the in-process loop or the cron endpoint.
+pub async fn tick(state: &AppState) -> Result<(), sqlx::Error> {
     let pool = &state.db.pool;
     // Claim due templates by advancing next_run atomically (date + int = date),
     // so a restart or a second instance can't issue the same cycle twice.

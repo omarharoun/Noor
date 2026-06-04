@@ -351,6 +351,9 @@ pub fn build_router(state: AppState) -> Router {
         )
         .route("/pay/:id", get(pay_page))
         .route("/invoice/:id", get(invoice_page))
+        // Secret-gated cron tick (drives background jobs when in-process workers
+        // are off, e.g. on Cloudflare Containers that scale to zero).
+        .route("/internal/cron", post(routes::internal::cron_tick))
         .route(
             "/api/mt/payment-orders/:id",
             get(routes::mt::get_payment_order),

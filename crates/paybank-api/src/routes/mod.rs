@@ -2,6 +2,7 @@ pub mod admin;
 pub mod banks;
 pub mod confirm;
 pub mod initiate;
+pub mod internal;
 pub mod merchant_api;
 pub mod mt;
 pub mod sessions;

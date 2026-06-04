@@ -47,7 +47,10 @@ fn map_provider_status(s: &str) -> Option<SessionStatus> {
     }
 }
 
-async fn tick(state: &AppState) -> Result<(), sqlx::Error> {
+/// One reconciliation pass: reap idempotency keys, credit settled top-ups, and
+/// resolve stuck `processing` sessions. Idempotent (CAS/atomic claims), so it's
+/// safe to run from either the in-process loop or the cron endpoint.
+pub async fn tick(state: &AppState) -> Result<(), sqlx::Error> {
     // Prune expired idempotency keys so the table doesn't grow without bound.
     match IdempotencyRepo::reap_expired(&state.db.pool).await {
         Ok(n) if n > 0 => tracing::info!(reaped = n, "pruned expired idempotency keys"),

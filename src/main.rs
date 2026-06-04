@@ -71,12 +71,23 @@ async fn main() -> anyhow::Result<()> {
     let db = Db::new(pool);
     let state = AppState::new(db, config);
 
-    // Background outbound-webhook delivery worker (drains the webhook_events outbox).
-    paybank_api::webhook_worker::spawn(state.clone());
-    // Reconciliation poller for sessions stuck in `processing`.
-    paybank_api::reconcile::spawn(state.clone());
-    // Recurring-invoice worker (issues due recurring invoices).
-    paybank_api::recurring::spawn(state.clone());
+    // Background jobs. By default they run as always-on in-process loops. On a
+    // scale-to-zero host (NOOR_CRON_DRIVEN=true, e.g. Cloudflare Containers) we
+    // skip them and let the secret-gated /internal/cron endpoint drive each tick
+    // on a schedule instead — so the container can sleep when idle.
+    let cron_driven = std::env::var("NOOR_CRON_DRIVEN")
+        .map(|v| v == "true")
+        .unwrap_or(false);
+    if cron_driven {
+        info!("NOOR_CRON_DRIVEN=true — background jobs run via /internal/cron, not in-process");
+    } else {
+        // Outbound-webhook delivery worker (drains the webhook_events outbox).
+        paybank_api::webhook_worker::spawn(state.clone());
+        // Reconciliation poller for sessions stuck in `processing`.
+        paybank_api::reconcile::spawn(state.clone());
+        // Recurring-invoice worker (issues due recurring invoices).
+        paybank_api::recurring::spawn(state.clone());
+    }
 
     let router = build_router(state);
 

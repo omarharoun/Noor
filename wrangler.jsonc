@@ -9,8 +9,8 @@
     {
       "class_name": "Backend",
       "image": "./Dockerfile",
-      // One always-warm instance so the in-process background loops keep
-      // running. Bump this only after moving those jobs to cron endpoints.
+      // Background jobs are cron-driven (NOOR_CRON_DRIVEN=true), so the
+      // container can scale to zero between ticks and requests.
       "max_instances": 1,
       "instance_type": "standard"
     }
@@ -22,8 +22,9 @@
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Backend"] }],
 
-  // Keep-warm ping every 5 min (< sleepAfter=10m) so the container never sleeps.
-  "triggers": { "crons": ["*/5 * * * *"] },
+  // Run background jobs every 2 minutes via /internal/cron. Widen this to save
+  // more (container sleeps longer) at the cost of webhook/settlement latency.
+  "triggers": { "crons": ["*/2 * * * *"] },
 
   // All four sites are served by this one Worker; the Rust app routes by Host.
   // custom_domain:true makes Cloudflare manage DNS + TLS for each name — delete
@@ -41,6 +42,7 @@
   // `wrangler secret put <NAME>` — never commit them here.
   "vars": {
     "NOOR_ENV": "production",
+    "NOOR_CRON_DRIVEN": "true",
     "RUST_LOG": "info",
     "EMAIL_FROM": "noreply@norhadi.com",
     "PUBLIC_APP_URL": "https://app.norhadi.com",

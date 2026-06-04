@@ -32,19 +32,23 @@ const BACKEND_ENV = [
   'ADMIN_PASSWORD',
   'NOOR_ENV',
   'NOOR_SKIP_MIGRATE',
+  'NOOR_CRON_DRIVEN',
+  'CRON_SECRET',
   'RUST_LOG',
 ] as const;
 
 interface Env {
   BACKEND: DurableObjectNamespace;
+  CRON_SECRET?: string;
   [key: string]: unknown;
 }
 
 export class Backend extends Container {
   // The Rust app listens on $PORT; we pin it to 8080 (see Dockerfile + envVars).
   defaultPort = 8080;
-  // Allow more time for the release binary + boot-time DB migrations.
-  sleepAfter = '10m';
+  // Scale to zero: sleep ~1m after the last request. The cron tick (every 2m)
+  // wakes it to run background jobs, so it's idle most of a low-traffic period.
+  sleepAfter = '1m';
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -66,9 +70,14 @@ export default {
     return getContainer(env.BACKEND, INSTANCE).fetch(request);
   },
 
-  // Keep-warm: refresh the instance before it can sleep, so the in-process
-  // reconcile (60s), recurring (hourly) and idempotency reaper keep ticking.
+  // Cron-driven background jobs: run one pass of webhooks/reconcile/recurring.
+  // Secret-gated; the container does the work then is free to sleep again.
   async scheduled(_event: ScheduledController, env: Env): Promise<void> {
-    await getContainer(env.BACKEND, INSTANCE).fetch(new Request('http://container/health'));
+    await getContainer(env.BACKEND, INSTANCE).fetch(
+      new Request('http://container/internal/cron', {
+        method: 'POST',
+        headers: { 'x-cron-key': env.CRON_SECRET ?? '' },
+      }),
+    );
   },
 };
