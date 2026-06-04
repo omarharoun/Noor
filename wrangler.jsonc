@@ -12,7 +12,7 @@
       // Background jobs are cron-driven (NOOR_CRON_DRIVEN=true), so the
       // container can scale to zero between ticks and requests.
       "max_instances": 1,
-      "instance_type": "standard"
+      "instance_type": "standard-1"
     }
   ],
 
@@ -26,16 +26,17 @@
   // more (container sleeps longer) at the cost of webhook/settlement latency.
   "triggers": { "crons": ["*/2 * * * *"] },
 
-  // All four sites are served by this one Worker; the Rust app routes by Host.
-  // custom_domain:true makes Cloudflare manage DNS + TLS for each name — delete
-  // any pre-existing CNAME (e.g. the old Railway api record) in that zone first.
-  "routes": [
-    { "pattern": "norhadi.com", "custom_domain": true },
-    { "pattern": "www.norhadi.com", "custom_domain": true },
-    { "pattern": "app.norhadi.com", "custom_domain": true },
-    { "pattern": "platform.norhadi.com", "custom_domain": true },
-    { "pattern": "api.norhadi.com", "custom_domain": true }
-  ],
+  // All sites are served by this one Worker; the Rust app routes by Host.
+  // Attach these once the repost.io zone is ACTIVE in Cloudflare (it's pending
+  // nameserver registration). custom_domain:true makes CF manage DNS + TLS.
+  // Until then we deploy to the workers.dev URL with no routes.
+  // "routes": [
+  //   { "pattern": "repost.io",          "custom_domain": true },
+  //   { "pattern": "www.repost.io",      "custom_domain": true },
+  //   { "pattern": "app.repost.io",      "custom_domain": true },
+  //   { "pattern": "platform.repost.io", "custom_domain": true },
+  //   { "pattern": "api.repost.io",       "custom_domain": true }
+  // ],
 
   // Non-secret config. Secrets (DATABASE_URL, JWT_SECRET, MODERN_TREASURY_*,
   // PII_ENCRYPTION_KEY, SENDGRID_API_KEY, ADMIN_PASSWORD, …) go in via
@@ -44,8 +45,8 @@
     "NOOR_ENV": "production",
     "NOOR_CRON_DRIVEN": "true",
     "RUST_LOG": "info",
-    "EMAIL_FROM": "noreply@norhadi.com",
-    "PUBLIC_APP_URL": "https://app.norhadi.com",
-    "CORS_ALLOWED_ORIGINS": "https://app.norhadi.com,https://platform.norhadi.com,https://norhadi.com"
+    "EMAIL_FROM": "noreply@repost.io",
+    "PUBLIC_APP_URL": "https://app.repost.io",
+    "CORS_ALLOWED_ORIGINS": "https://app.repost.io,https://platform.repost.io,https://repost.io"
   }
 }

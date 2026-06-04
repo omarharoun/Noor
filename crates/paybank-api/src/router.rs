@@ -90,7 +90,7 @@ async fn serve_html(path: &str) -> Response {
     }
 }
 
-/// Root (`/`) is served by Host, so one Railway service backs every subdomain:
+/// Root (`/`) is served by Host, so one container backs every subdomain:
 ///   app.*      → merchant dashboard      platform.* → operator console (SPA)
 ///   api.*      → API info page           apex/www/* → marketing site
 /// The `/api/*` routes answer on EVERY host, so each UI calls its own origin
@@ -116,7 +116,7 @@ async fn root_handler(req: Request) -> Response {
          "<!doctype html><meta charset=utf-8><title>Noor API</title>\
           <body style=\"font-family:system-ui;max-width:40rem;margin:4rem auto;padding:0 1rem;color:#211F1A\">\
           <h1>Noor API</h1><p>This is the Noor API endpoint. \
-          The merchant dashboard is at <a href=\"https://app.norhadi.com\">app.norhadi.com</a>.</p></body>")
+          The merchant dashboard is at <a href=\"https://app.repost.io\">app.repost.io</a>.</p></body>")
             .into_response()
     } else {
         serve_html("web/marketing.html").await

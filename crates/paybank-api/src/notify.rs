@@ -12,7 +12,7 @@ pub async fn push(pool: &PgPool, merchant_id: Uuid, kind: &str, message: &str) {
             .execute(pool)
             .await;
     // Also email the notification (no-op until SENDGRID_API_KEY is set). It's
-    // sent FROM noreply@norhadi.com TO the merchant's own contact email —
+    // sent FROM noreply@repost.io TO the merchant's own contact email —
     // noreply is send-only and must never be a recipient. Fire-and-forget so a
     // slow SendGrid call never blocks the money path.
     let to: Option<String> = sqlx::query("SELECT email FROM merchants WHERE id = $1")
