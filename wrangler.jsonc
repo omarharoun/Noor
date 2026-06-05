@@ -27,16 +27,14 @@
   "triggers": { "crons": ["*/2 * * * *"] },
 
   // All sites are served by this one Worker; the Rust app routes by Host.
-  // Attach these once the repost.io zone is ACTIVE in Cloudflare (it's pending
-  // nameserver registration). custom_domain:true makes CF manage DNS + TLS.
-  // Until then we deploy to the workers.dev URL with no routes.
-  // "routes": [
-  //   { "pattern": "repost.io",          "custom_domain": true },
-  //   { "pattern": "www.repost.io",      "custom_domain": true },
-  //   { "pattern": "app.repost.io",      "custom_domain": true },
-  //   { "pattern": "platform.repost.io", "custom_domain": true },
-  //   { "pattern": "api.repost.io",       "custom_domain": true }
-  // ],
+  // custom_domain:true makes Cloudflare manage DNS + TLS for each name.
+  "routes": [
+    { "pattern": "depost.io", "custom_domain": true },
+    { "pattern": "www.depost.io", "custom_domain": true },
+    { "pattern": "app.depost.io", "custom_domain": true },
+    { "pattern": "platform.depost.io", "custom_domain": true },
+    { "pattern": "api.depost.io", "custom_domain": true }
+  ],
 
   // Non-secret config. Secrets (DATABASE_URL, JWT_SECRET, MODERN_TREASURY_*,
   // PII_ENCRYPTION_KEY, SENDGRID_API_KEY, ADMIN_PASSWORD, …) go in via
@@ -45,8 +43,8 @@
     "NOOR_ENV": "production",
     "NOOR_CRON_DRIVEN": "true",
     "RUST_LOG": "info",
-    "EMAIL_FROM": "noreply@repost.io",
-    "PUBLIC_APP_URL": "https://app.repost.io",
-    "CORS_ALLOWED_ORIGINS": "https://app.repost.io,https://platform.repost.io,https://repost.io"
+    "EMAIL_FROM": "noreply@depost.io",
+    "PUBLIC_APP_URL": "https://app.depost.io",
+    "CORS_ALLOWED_ORIGINS": "https://app.depost.io,https://platform.depost.io,https://depost.io"
   }
 }

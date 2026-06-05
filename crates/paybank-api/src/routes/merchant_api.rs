@@ -1423,7 +1423,7 @@ pub async fn create_invoice(
     .await;
 
     // Email the customer their invoice + hosted pay link — white-labeled, sent
-    // FROM noreply@repost.io TO the customer. Fire-and-forget so it never
+    // FROM noreply@depost.io TO the customer. Fire-and-forget so it never
     // blocks the response; no-op until SENDGRID_API_KEY is set.
     if let Some(url) = created.hosted_url.clone() {
         let merch: String = sqlx::query(
