@@ -22,6 +22,12 @@
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Backend"] }],
 
+  // Cloudflare Email Service binding — the Worker calls env.EMAIL.send({to,...}).
+  // "remote": true routes through the live Email Service. The sender domain
+  // (EMAIL_FROM below) must be Onboarded in the dashboard: Email → Email Sending
+  // → Onboard Domain, which auto-adds cf-bounce MX/SPF/DKIM/DMARC to the zone.
+  "send_email": [{ "name": "EMAIL", "remote": true }],
+
   // Run background jobs every 2 minutes via /internal/cron. Widen this to save
   // more (container sleeps longer) at the cost of webhook/settlement latency.
   "triggers": { "crons": ["*/2 * * * *"] },
@@ -44,6 +50,7 @@
     "NOOR_CRON_DRIVEN": "true",
     "RUST_LOG": "info",
     "EMAIL_FROM": "noreply@depost.io",
+    "EMAIL_ENDPOINT": "https://api.depost.io/__cf/email",
     "PUBLIC_APP_URL": "https://app.depost.io",
     "CORS_ALLOWED_ORIGINS": "https://app.depost.io,https://platform.depost.io,https://depost.io"
   }

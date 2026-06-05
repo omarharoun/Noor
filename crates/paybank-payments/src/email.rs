@@ -1,21 +1,22 @@
-//! Best-effort transactional email via SendGrid. No-op until SENDGRID_API_KEY
-//! is set, so it's safe to ship before the key lands in the environment.
-//! `EMAIL_FROM` / fallback recipient default to noreply@depost.io.
+//! Best-effort transactional email. The Cloudflare Email binding (`env.EMAIL`)
+//! lives on the Worker, and a container can't hold a Worker binding — so the
+//! container POSTs an internal endpoint on the Worker (`EMAIL_ENDPOINT`),
+//! authenticated with `CRON_SECRET`, and the Worker calls `env.EMAIL.send()`.
+//! No-op until both `EMAIL_ENDPOINT` and `CRON_SECRET` are set, so it's safe to
+//! ship before email is wired.
 
 /// Send a plaintext email. Infallible by design (notifications must never fail
 /// because email is down) — failures are logged, not propagated.
 pub async fn send_email(to: &str, subject: &str, body: &str) {
-    let key = match std::env::var("SENDGRID_API_KEY") {
-        Ok(k) if !k.is_empty() => k,
-        _ => return, // not configured yet — silently skip
+    let endpoint = match std::env::var("EMAIL_ENDPOINT") {
+        Ok(e) if !e.is_empty() => e,
+        _ => return, // email not wired yet — silently skip
     };
-    let from = std::env::var("EMAIL_FROM").unwrap_or_else(|_| "noreply@depost.io".to_string());
-    let payload = serde_json::json!({
-        "personalizations": [{ "to": [{ "email": to }] }],
-        "from": { "email": from },
-        "subject": subject,
-        "content": [{ "type": "text/plain", "value": body }],
-    });
+    let secret = std::env::var("CRON_SECRET").unwrap_or_default();
+    if secret.is_empty() {
+        return;
+    }
+    let payload = serde_json::json!({ "to": to, "subject": subject, "text": body });
     let client = match reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(15))
         .build()
@@ -27,8 +28,8 @@ pub async fn send_email(to: &str, subject: &str, body: &str) {
         }
     };
     match client
-        .post("https://api.sendgrid.com/v3/mail/send")
-        .bearer_auth(key)
+        .post(&endpoint)
+        .header("x-cron-key", secret)
         .json(&payload)
         .send()
         .await
@@ -37,8 +38,8 @@ pub async fn send_email(to: &str, subject: &str, body: &str) {
         Ok(r) => {
             let st = r.status();
             let b = r.text().await.unwrap_or_default();
-            tracing::warn!("sendgrid send failed: {} {}", st, b);
+            tracing::warn!("email send failed: {} {}", st, b);
         }
-        Err(e) => tracing::warn!(error = %e, "sendgrid request failed"),
+        Err(e) => tracing::warn!(error = %e, "email request failed"),
     }
 }
