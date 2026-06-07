@@ -54,6 +54,7 @@ interface Env {
   EMAIL: EmailBinding;
   EMAIL_FROM?: string;
   CRON_SECRET?: string;
+  MODERN_TREASURY_WEBHOOK_SECRET?: string;
   [key: string]: unknown;
 }
 
@@ -118,10 +119,61 @@ async function handleEmail(request: Request, env: Env): Promise<Response> {
   }
 }
 
+// Inbound Modern Treasury webhooks are handled HERE (always-on Worker) instead
+// of the container, so MT always gets a fast 200 even when the container is
+// asleep — that's what keeps the endpoint from being auto-disabled. We verify
+// the HMAC signature at the edge, ack immediately, and process in the container
+// asynchronously (it cold-starts if needed; MT isn't kept waiting).
+const MT_WEBHOOK_PATH = '/api/webhooks/moderntreasury';
+
+async function verifyHmacHex(secret: string, body: ArrayBuffer, sigHex: string): Promise<boolean> {
+  const key = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  );
+  const mac = await crypto.subtle.sign('HMAC', key, body);
+  const expected = [...new Uint8Array(mac)].map((b) => b.toString(16).padStart(2, '0')).join('');
+  if (expected.length !== sigHex.length) return false;
+  let diff = 0;
+  for (let i = 0; i < expected.length; i++) diff |= expected.charCodeAt(i) ^ sigHex.charCodeAt(i);
+  return diff === 0;
+}
+
+async function handleMtWebhook(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  const sig = request.headers.get('x-signature') ?? '';
+  const secret = env.MODERN_TREASURY_WEBHOOK_SECRET ?? '';
+  const body = await request.arrayBuffer();
+  if (!secret || !sig || !(await verifyHmacHex(secret, body, sig))) {
+    return new Response('invalid signature', { status: 401 });
+  }
+  // Verified — hand off to the container to post ledger entries, then ack MT now.
+  ctx.waitUntil(
+    getContainer(env.BACKEND, INSTANCE)
+      .fetch(
+        new Request('http://container/api/webhooks/moderntreasury', {
+          method: 'POST',
+          headers: {
+            'content-type': request.headers.get('content-type') ?? 'application/json',
+            'x-signature': sig,
+          },
+          body,
+        }),
+      )
+      .catch(() => {}),
+  );
+  return Response.json({ received: true });
+}
+
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const { pathname } = new URL(request.url);
     if (pathname === EMAIL_PATH) return handleEmail(request, env);
+    if (pathname === MT_WEBHOOK_PATH && request.method === 'POST') {
+      return handleMtWebhook(request, env, ctx);
+    }
     return getContainer(env.BACKEND, INSTANCE).fetch(request);
   },
 
