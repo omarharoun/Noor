@@ -150,6 +150,24 @@ html[data-theme="dark"]{
   --neutral:#B8AE9C;--neutral-fill:#262219;--neutral-border:#3A352B;
   --shadow-xs:0 1px 2px rgba(0,0,0,.3);--shadow-sm:0 1px 2px rgba(0,0,0,.25),0 2px 6px rgba(0,0,0,.3);--shadow-md:0 2px 4px rgba(0,0,0,.3),0 8px 20px rgba(0,0,0,.45);
 }
+/* ---- Finance dashboard (Overview) ---- */
+.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:16px}
+.kpi{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);box-shadow:var(--shadow-sm);padding:18px 20px}
+.kpi-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.kpi-ico{width:38px;height:38px;border-radius:10px;display:grid;place-items:center;background:var(--brand-soft);color:var(--brand)}
+.kpi-chg{display:inline-flex;align-items:center;gap:3px;font-size:11.5px;font-weight:700;padding:3px 8px;border-radius:var(--r-pill)}
+.kpi-chg.up{color:var(--success);background:var(--success-fill)}
+.kpi-chg.down{color:var(--danger);background:var(--danger-fill)}
+.kpi-chg.flat{color:var(--ink-3);background:var(--cream-deep)}
+.kpi-val{font-family:var(--font-serif);font-size:30px;font-weight:500;letter-spacing:-.01em;font-variant-numeric:tabular-nums;line-height:1.1}
+.kpi-lbl{font-size:12.5px;color:var(--ink-3);margin-top:4px}
+.dash-grid{display:grid;grid-template-columns:1.55fr 1fr;gap:16px;margin-bottom:16px}
+.dash-grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.brk-row{display:flex;align-items:baseline;justify-content:space-between;font-size:13.5px;margin-bottom:5px}
+.brk-bar{height:6px;border-radius:4px;background:var(--cream-deep);overflow:hidden;margin-bottom:14px}
+.brk-bar>span{display:block;height:100%;background:var(--brand);border-radius:4px}
+.bal-strip{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:16px;padding:14px 18px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);box-shadow:var(--shadow-sm)}
+@media(max-width:1000px){.kpi-grid{grid-template-columns:repeat(2,1fr)}.dash-grid,.dash-grid2{grid-template-columns:1fr}}
 </style>
 <script>(function(){try{var t=localStorage.getItem('noor_theme');if(t==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}})();</script>
 </head>
@@ -204,6 +222,7 @@ html[data-theme="dark"]{
 </div>
 
 <script src="https://unpkg.com/lucide@0.456.0/dist/umd/lucide.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
 <script>
 /* Merchant dashboard — users sign in with email + password (merchant-user JWT)
    and talk to the merchant-scoped /api/merchant-api/* endpoints. Roles
@@ -423,41 +442,105 @@ function toggleTheme(){
 async function loadOverview(){
   const el = document.getElementById('section-overview');
   el.innerHTML = `
-    <div class="balance-hero">
-      <div class="balance-card">
-        <div class="bk-label">Available balance</div>
-        <div class="bk-amount" id="ov-balance">—</div>
-        <div class="bk-row">
-          <div><div class="bk-sub-l">Pending</div><div class="bk-sub-v" id="ov-pending">—</div></div>
-          <div><div class="bk-sub-l">Currency</div><div class="bk-sub-v">USD</div></div>
-        </div>
-        <div class="bk-actions">
-          <button class="bk-btn" onclick="walletAction('add')"><i data-lucide="plus" style="width:14px;height:14px"></i>Add funds</button>
-          <button class="bk-btn" onclick="walletAction('withdraw')"><i data-lucide="arrow-down-to-line" style="width:14px;height:14px"></i>Withdraw</button>
-        </div>
-      </div>
-      <div class="mini-stats">
-        <div class="mini-stat"><div class="ms-ico"><i data-lucide="check-circle-2" style="width:17px;height:17px;color:var(--brand)"></i></div><div><div class="ms-label">Payments</div><div class="ms-value" id="ov-count">0</div></div></div>
-        <div class="mini-stat"><div class="ms-ico"><i data-lucide="zap" style="width:17px;height:17px;color:var(--brand)"></i></div><div><div class="ms-label">Default rail</div><div class="ms-value" style="font-size:17px">Fastest</div></div></div>
+    <div class="bal-strip">
+      <div style="flex:1;min-width:170px"><div class="bk-sub-l">Available balance</div><div style="font-family:var(--font-serif);font-size:26px;font-weight:500;font-variant-numeric:tabular-nums" id="ov-balance">—</div></div>
+      <div><div class="bk-sub-l">Pending</div><div style="font-weight:600" id="ov-pending">—</div></div>
+      <div style="display:flex;gap:8px">
+        <button class="mbtn mbtn-primary mbtn-sm" onclick="walletAction('add')"><i data-lucide="plus" style="width:14px;height:14px"></i>Add funds</button>
+        <button class="mbtn mbtn-secondary mbtn-sm" onclick="walletAction('withdraw')"><i data-lucide="arrow-down-to-line" style="width:14px;height:14px"></i>Withdraw</button>
       </div>
     </div>
     <div id="wallet-action"></div>
-    <div class="mcard"><div class="mcard-head"><h2 class="mcard-title">Recent payments<span class="live-badge"><span class="live-dot"></span>Live</span></h2></div>
-      <div id="ov-activity"><div class="empty"><div class="spinner"></div></div></div></div>`;
+    <div class="kpi-grid" id="ov-kpis">${kpiCard('dollar-sign','Total Revenue')}${kpiCard('trending-up','Net Profit')}${kpiCard('file-text','Accounts Receivable')}${kpiCard('arrow-up-right','Operating Expenses')}</div>
+    <div class="dash-grid">
+      <div class="mcard" style="margin:0"><div class="mcard-head"><div><h2 class="mcard-title">Revenue vs Expenses</h2><div style="font-size:12px;color:var(--ink-3);margin-top:2px">Monthly, last 12 months</div></div></div>
+        <div class="mcard-body"><div style="height:300px"><canvas id="ov-chart"></canvas></div></div></div>
+      <div class="mcard" style="margin:0"><div class="mcard-head"><h2 class="mcard-title">Where money went</h2></div>
+        <div class="mcard-body" id="ov-breakdown"><div class="empty"><div class="spinner"></div></div></div></div>
+    </div>
+    <div class="dash-grid2">
+      <div class="mcard" style="margin:0"><div class="mcard-head"><h2 class="mcard-title">Recent transactions</h2><a style="font-size:12.5px;color:var(--brand);cursor:pointer" onclick="switchTab('payments')">View all →</a></div>
+        <div id="ov-activity"><div class="empty"><div class="spinner"></div></div></div></div>
+      <div class="mcard" style="margin:0"><div class="mcard-head"><h2 class="mcard-title">Outstanding invoices</h2><a style="font-size:12.5px;color:var(--brand);cursor:pointer" onclick="switchTab('invoices')">View all →</a></div>
+        <div id="ov-invoices"><div class="empty"><div class="spinner"></div></div></div></div>
+    </div>`;
   icons();
   try{
-    const [bal, pay] = await Promise.all([
+    const [bal, rep, ts, pay, inv] = await Promise.all([
       api('/api/merchant-api/balances/'+(MERCHANT_ID||DUMMY_ID)),
-      api('/api/merchant-api/payments?page=0&limit=8'),
+      api('/api/merchant-api/reports/summary'),
+      api('/api/merchant-api/payments/timeseries').catch(()=>({series:[]})),
+      api('/api/merchant-api/payments?page=0&limit=6'),
+      api('/api/merchant-api/invoices').catch(()=>({invoices:[]})),
     ]);
     MERCHANT_ID = bal.merchant_id || MERCHANT_ID;
     document.getElementById('ov-balance').textContent = fmt(bal.available);
     document.getElementById('ov-pending').textContent = fmt(bal.pending);
-    const items = pay.payments || [];
-    document.getElementById('ov-count').textContent = items.length;
-    const act = document.getElementById('ov-activity');
-    act.innerHTML = items.length ? renderPaymentsTable(items) : `<div class="empty">No payments yet. Create a payment link to start collecting.</div>`;
-  }catch(e){ if(e.message!=='unauthorized') document.getElementById('ov-activity').innerHTML = `<div class="mcard-body"><div class="flash error">${e.message}</div></div>`; }
+    const revenue = rep.collected?.total||0, expenses = rep.payouts?.total||0;
+    const net = revenue - expenses, ar = rep.receivable||0;
+    const series = ts.series||[];
+    setKpi(0, revenue, momChange(series,'revenue'));
+    setKpi(1, net, momChange(series,'profit'));
+    setKpi(2, ar, null);
+    setKpi(3, expenses, momChange(series,'expenses'), true);
+    renderOvChart(series);
+    renderBreakdown(rep.expense_breakdown||[], expenses);
+    const items = pay.payments||[];
+    document.getElementById('ov-activity').innerHTML = items.length ? renderTxnTable(items) : `<div class="empty">No transactions yet.</div>`;
+    const unpaid = (inv.invoices||[]).filter(i=>i.status!=='paid' && i.status!=='voided').slice(0,6);
+    document.getElementById('ov-invoices').innerHTML = unpaid.length ? renderInvTable(unpaid) : `<div class="empty">No outstanding invoices.</div>`;
+  }catch(e){ if(e.message!=='unauthorized') el.innerHTML=`<div class="mcard"><div class="mcard-body"><div class="flash error">${e.message}</div></div></div>`; }
+}
+function kpiCard(ico,label){ return `<div class="kpi"><div class="kpi-top"><div class="kpi-ico"><i data-lucide="${ico}" style="width:19px;height:19px"></i></div><span class="kpi-chg flat" style="visibility:hidden">—</span></div><div class="kpi-val">—</div><div class="kpi-lbl">${label}</div></div>`; }
+function setKpi(i, cents, chg, invert){
+  const card = document.querySelectorAll('#ov-kpis .kpi')[i]; if(!card) return;
+  card.querySelector('.kpi-val').textContent = fmt(cents);
+  const badge = card.querySelector('.kpi-chg');
+  if(chg==null || !isFinite(chg)){ badge.style.visibility='hidden'; return; }
+  const good = invert ? chg<=0 : chg>=0;
+  badge.style.visibility='visible';
+  badge.className = 'kpi-chg '+(chg===0?'flat':(good?'up':'down'));
+  badge.textContent = `${chg>0?'↑':(chg<0?'↓':'')} ${Math.abs(chg).toFixed(1)}%`;
+}
+function momChange(series, key){
+  if(!series || series.length<2) return null;
+  const cur = series[series.length-1][key]||0, prev = series[series.length-2][key]||0;
+  if(prev===0) return cur===0?0:null;
+  return (cur-prev)/Math.abs(prev)*100;
+}
+let ovChart=null;
+function renderOvChart(series){
+  const cv = document.getElementById('ov-chart'); if(!cv || !window.Chart) return;
+  const labels = series.map(s=>{ const a=s.month.split('-'); return new Date(a[0],a[1]-1,1).toLocaleString('en-US',{month:'short'}); });
+  const css=getComputedStyle(document.documentElement);
+  const grid=(css.getPropertyValue('--border')||'#E9E5DA').trim(), ink=(css.getPropertyValue('--ink-3')||'#8B857A').trim();
+  const ds=(label,key,color)=>({label,data:series.map(s=>(s[key]||0)/100),borderColor:color,backgroundColor:color+'22',fill:true,tension:.4,pointRadius:0,borderWidth:2});
+  if(ovChart) ovChart.destroy();
+  ovChart=new Chart(cv,{type:'line',data:{labels,datasets:[ds('Revenue','revenue','#5B8DEF'),ds('Expenses','expenses','#E0816F'),ds('Profit','profit','#4FB286')]},
+    options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
+      plugins:{legend:{position:'top',align:'end',labels:{boxWidth:8,boxHeight:8,usePointStyle:true,color:ink,font:{size:11}}},
+        tooltip:{callbacks:{label:c=>` ${c.dataset.label}: ${fmt(c.parsed.y*100)}`}}},
+      scales:{x:{grid:{display:false},ticks:{color:ink,font:{size:11}}},
+        y:{grid:{color:grid},ticks:{color:ink,font:{size:11},callback:v=>'$'+(Math.abs(v)>=1000?(v/1000)+'K':v)}}}}});
+}
+function renderBreakdown(items, total){
+  const el=document.getElementById('ov-breakdown');
+  if(!items.length){ el.innerHTML='<div class="empty">No payouts yet.</div>'; return; }
+  const t = total||items.reduce((a,b)=>a+(b.amount||0),0)||1;
+  el.innerHTML = items.map(it=>{ const pct=Math.round((it.amount||0)/t*100); return `
+    <div class="brk-row"><span style="font-weight:500">${esc(it.name||'—')}</span><span><span class="cell-amt">${fmt(it.amount)}</span> <span style="color:var(--ink-3);font-size:12px">${pct}%</span></span></div>
+    <div class="brk-bar"><span style="width:${pct}%"></span></div>`;}).join('') +
+    `<div class="brk-row" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)"><span style="font-weight:600">Total out</span><span class="cell-amt" style="font-weight:700">${fmt(t)}</span></div>`;
+}
+function renderTxnTable(items){
+  return `<div class="tbl-wrap"><table class="mtbl"><thead><tr><th>Transaction</th><th>Amount</th><th>Status</th><th>Date</th></tr></thead><tbody>
+    ${items.map(p=>`<tr><td class="cell-id">${String(p.id||'').slice(0,8)}…</td><td class="cell-amt">${fmt(p.amount)}</td><td>${badge(p.status)}</td><td class="cell-muted">${p.created_at?new Date(p.created_at).toLocaleDateString():'—'}</td></tr>`).join('')}
+  </tbody></table></div>`;
+}
+function renderInvTable(items){
+  return `<div class="tbl-wrap"><table class="mtbl"><thead><tr><th>Invoice</th><th>Customer</th><th>Amount</th><th>Status</th></tr></thead><tbody>
+    ${items.map(i=>`<tr><td class="cell-id">${esc(i.number||String(i.id||'').slice(0,8))}</td><td>${esc(i.customer_name||'')}</td><td class="cell-amt">${fmt(i.amount)}</td><td>${badge(i.status)}</td></tr>`).join('')}
+  </tbody></table></div>`;
 }
 
 function renderPaymentsTable(items){

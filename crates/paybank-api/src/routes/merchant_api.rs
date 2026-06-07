@@ -192,13 +192,54 @@ pub async fn list_payments(
     Ok(Json(serde_json::json!({ "payments": payments })))
 }
 
-#[derive(Deserialize)]
-pub struct TimeseriesQuery {
-    pub granularity: Option<String>,
-}
+/// Last-12-months revenue (collections) vs expenses (payouts) per month, with
+/// profit = revenue − expenses. Powers the Overview chart.
+pub async fn payment_timeseries(
+    State(state): State<AppState>,
+    Extension(AuthedMerchant(merchant_id)): Extension<AuthedMerchant>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let pool = &state.db.pool;
+    let monthly = |sql: &'static str| {
+        let pool = pool.clone();
+        async move {
+            let rows = sqlx::query(sql)
+                .bind(merchant_id)
+                .fetch_all(&pool)
+                .await
+                .unwrap_or_default();
+            let mut m = std::collections::HashMap::<String, i64>::new();
+            for r in &rows {
+                m.insert(
+                    r.try_get::<String, _>("m").unwrap_or_default(),
+                    r.try_get::<i64, _>("a").unwrap_or(0),
+                );
+            }
+            m
+        }
+    };
+    let rev = monthly(
+        "SELECT to_char(date_trunc('month', created_at),'YYYY-MM') m, COALESCE(SUM(amount_cents),0)::int8 a \
+         FROM transactions WHERE merchant_id=$1 AND created_at >= date_trunc('month', now()) - interval '11 months' GROUP BY 1",
+    ).await;
+    let exp = monthly(
+        "SELECT to_char(date_trunc('month', created_at),'YYYY-MM') m, COALESCE(SUM(amount_cents),0)::int8 a \
+         FROM payouts WHERE merchant_id=$1 AND status IN ('processing','completed') AND created_at >= date_trunc('month', now()) - interval '11 months' GROUP BY 1",
+    ).await;
 
-pub async fn payment_timeseries() -> Result<Json<Vec<serde_json::Value>>, AppError> {
-    Ok(Json(vec![]))
+    use chrono::Datelike;
+    let now = Utc::now();
+    let base = now.year() * 12 + (now.month() as i32 - 1);
+    let series: Vec<serde_json::Value> = (0..12)
+        .rev()
+        .map(|k| {
+            let t = base - k;
+            let label = format!("{:04}-{:02}", t / 12, (t % 12) + 1);
+            let r = *rev.get(&label).unwrap_or(&0);
+            let e = *exp.get(&label).unwrap_or(&0);
+            serde_json::json!({ "month": label, "revenue": r, "expenses": e, "profit": r - e })
+        })
+        .collect();
+    Ok(Json(serde_json::json!({ "series": series })))
 }
 
 #[derive(Deserialize)]
@@ -662,12 +703,39 @@ pub async fn report_summary(
         "SELECT COUNT(*)::int8 FROM payouts WHERE merchant_id=$1 AND status='pending_approval'",
     )
     .await;
+    // Accounts receivable: amount of invoices not yet paid.
+    let receivable = scal(
+        "SELECT COALESCE(SUM(amount_cents),0)::int8 FROM invoices WHERE merchant_id=$1 AND status<>'paid'",
+    )
+    .await;
+
+    // Where money went: top payout destinations (the "expense breakdown").
+    let brk = sqlx::query(
+        "SELECT payee_name, COALESCE(SUM(amount_cents),0)::int8 AS amt FROM payouts \
+         WHERE merchant_id=$1 AND status IN ('processing','completed') \
+         GROUP BY payee_name ORDER BY amt DESC LIMIT 6",
+    )
+    .bind(merchant_id)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+    let breakdown: Vec<serde_json::Value> = brk
+        .iter()
+        .map(|r| {
+            serde_json::json!({
+                "name": r.try_get::<String,_>("payee_name").unwrap_or_default(),
+                "amount": r.try_get::<i64,_>("amt").unwrap_or(0),
+            })
+        })
+        .collect();
 
     Ok(Json(serde_json::json!({
         "balance": { "available": available, "pending": pending, "currency": "USD" },
         "collected": { "total": collected, "count": txn_count },
         "invoices": { "count": invoices_count, "paid": invoices_paid, "unpaid": invoices_unpaid, "total": invoices_total },
         "payouts": { "count": payouts_count, "total": payouts_total, "pending_approval": payouts_pending },
+        "receivable": receivable,
+        "expense_breakdown": breakdown,
     })))
 }
 
