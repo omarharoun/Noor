@@ -310,7 +310,7 @@ pub async fn create_merchant(
     Extension(AuthedOperator(claims)): Extension<AuthedOperator>,
     Json(body): Json<CreateMerchantBody>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), AppError> {
-    let api_key = format!("admin_{}", Uuid::new_v4());
+    let api_key = format!("noor_sk_{}", Uuid::new_v4().simple());
     let merchant = admin_repo::create_merchant(&state.db.pool, &body.name, &body.email, &api_key)
         .await
         .map_err(AppError::Internal)?;

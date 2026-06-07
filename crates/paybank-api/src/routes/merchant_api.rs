@@ -113,6 +113,51 @@ pub async fn update_merchant_profile(
     get_merchant_profile(State(state), Extension(AuthedMerchant(merchant_id))).await
 }
 
+/// A merchant API key in the clean public format `noor_sk_<32 hex>`.
+fn new_api_key() -> String {
+    format!("noor_sk_{}", Uuid::new_v4().simple())
+}
+
+/// Return the merchant's API key + how to use it, so they can integrate from the
+/// dashboard. Returned only to the authenticated merchant (they own the key).
+pub async fn get_api_key(
+    State(state): State<AppState>,
+    Extension(AuthedMerchant(merchant_id)): Extension<AuthedMerchant>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let r = sqlx::query("SELECT api_key FROM merchants WHERE id = $1")
+        .bind(merchant_id)
+        .fetch_one(&state.db.pool)
+        .await?;
+    let api_key: String = r.try_get("api_key").unwrap_or_default();
+    let base =
+        std::env::var("API_BASE_URL").unwrap_or_else(|_| "https://api.depost.io".to_string());
+    Ok(Json(serde_json::json!({
+        "api_key": api_key,
+        "base_url": base,
+        "header": "X-API-Key",
+    })))
+}
+
+/// Rotate the merchant's API key (owner/admin only). The old key stops working
+/// immediately; the new key is returned once.
+pub async fn rotate_api_key(
+    State(state): State<AppState>,
+    actor: crate::auth::AuthedMerchantUser,
+) -> Result<Json<serde_json::Value>, AppError> {
+    if actor.role != "owner" && actor.role != "admin" {
+        return Err(AppError::Forbidden(
+            "only an owner or admin can rotate the API key".into(),
+        ));
+    }
+    let key = new_api_key();
+    sqlx::query("UPDATE merchants SET api_key = $1, updated_at = NOW() WHERE id = $2")
+        .bind(&key)
+        .bind(actor.merchant_id)
+        .execute(&state.db.pool)
+        .await?;
+    Ok(Json(serde_json::json!({ "api_key": key })))
+}
+
 #[derive(Deserialize)]
 pub struct PaymentsQuery {
     pub page: Option<i64>,

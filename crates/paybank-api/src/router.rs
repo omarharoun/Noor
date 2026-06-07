@@ -215,6 +215,14 @@ pub fn build_router(state: AppState) -> Router {
                 .put(routes::merchant_api::update_merchant_profile),
         )
         .route(
+            "/api/merchant-api/api-key",
+            get(routes::merchant_api::get_api_key),
+        )
+        .route(
+            "/api/merchant-api/api-key/rotate",
+            post(routes::merchant_api::rotate_api_key),
+        )
+        .route(
             "/api/merchant-api/payments",
             get(routes::merchant_api::list_payments),
         )

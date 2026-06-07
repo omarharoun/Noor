@@ -307,7 +307,13 @@ async function loadSettings(){
   const el = document.getElementById('section-settings');
   el.innerHTML = `<div class="mcard"><div class="mcard-body"><div class="empty"><div class="spinner"></div></div></div></div>`;
   try{
-    const p = await api('/api/merchant-api/merchants/profile');
+    const [p, k] = await Promise.all([
+      api('/api/merchant-api/merchants/profile'),
+      api('/api/merchant-api/api-key').catch(()=>({api_key:'',base_url:'https://api.depost.io',header:'X-API-Key'})),
+    ]);
+    API_KEY = k.api_key || '';
+    const base = k.base_url || 'https://api.depost.io';
+    const hdr = k.header || 'X-API-Key';
     const verified = (p.kyc_status||'')==='verified';
     el.innerHTML = `
       <div class="mcard" style="margin-bottom:18px"><div class="mcard-head"><h2 class="mcard-title">Account status</h2>
@@ -333,7 +339,27 @@ async function loadSettings(){
           <div class="form-actions"><button class="mbtn mbtn-primary mbtn-md" type="submit"><i data-lucide="check" style="width:15px;height:15px"></i>Save profile</button></div>
         </form><div id="profile-result"></div></div></div>
 
-      <div class="mcard"><div class="mcard-head"><h2 class="mcard-title">Developer</h2></div>
+      <div class="mcard" style="margin-bottom:18px"><div class="mcard-head"><h2 class="mcard-title">API key</h2>
+        <button class="mbtn mbtn-secondary mbtn-sm" onclick="regenKey()"><i data-lucide="refresh-cw" style="width:13px;height:13px"></i>Regenerate</button></div>
+        <div class="mcard-body" style="max-width:620px">
+          <p style="color:var(--ink-3);font-size:13px;margin:0 0 12px">Use this secret key to authenticate API requests. Keep it private — anyone with it can move money on your account.</p>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input id="ak-key" readonly value="${maskKey(API_KEY)}" style="flex:1;font-family:var(--font-mono);font-size:13px;letter-spacing:.02em">
+            <button class="mbtn mbtn-secondary mbtn-sm" id="ak-reveal" onclick="revealKey()"><i data-lucide="eye" style="width:14px;height:14px"></i>Reveal</button>
+            <button class="mbtn mbtn-secondary mbtn-sm" onclick="copyKey(this)"><i data-lucide="copy" style="width:14px;height:14px"></i>Copy</button>
+          </div>
+          <div id="ak-result"></div>
+          <div style="margin-top:18px"><div class="bk-sub-l" style="margin-bottom:6px">Base URL</div>
+            <div style="display:flex;gap:8px;align-items:center"><input readonly value="${esc(base)}" style="flex:1;font-family:var(--font-mono);font-size:13px"><button class="mbtn mbtn-secondary mbtn-sm" onclick="copyText('${esc(base)}',this)"><i data-lucide="copy" style="width:14px;height:14px"></i>Copy</button></div>
+          </div>
+          <div style="margin-top:18px"><div class="bk-sub-l" style="margin-bottom:6px">Quick start — fetch your account</div>
+            <pre id="ak-snippet" style="background:var(--cream-deep);border:1px solid var(--border);border-radius:var(--r-sm);padding:14px;font-family:var(--font-mono);font-size:12.5px;overflow-x:auto;margin:0;white-space:pre">curl ${esc(base)}/api/merchant-api/merchants/profile \\
+  -H "${esc(hdr)}: ${maskKey(API_KEY)}"</pre>
+            <div class="form-actions" style="margin-top:10px"><button class="mbtn mbtn-secondary mbtn-sm" onclick="copySnippet(this,'${esc(base)}','${esc(hdr)}')"><i data-lucide="copy" style="width:14px;height:14px"></i>Copy with key</button></div>
+          </div>
+        </div></div>
+
+      <div class="mcard"><div class="mcard-head"><h2 class="mcard-title">Webhooks</h2></div>
         <div class="mcard-body"><form id="webhookForm" style="max-width:560px">
           <div class="field"><label>Webhook URL</label><input id="s-webhook" value="${esc(p.webhook_url)}" placeholder="https://acme.com/webhooks/noor"></div>
           <div class="flash info">We POST event notifications (payments, payouts, invoices) to this URL.</div>
@@ -350,6 +376,31 @@ async function loadSettings(){
       webhook_url: document.getElementById('s-webhook').value.trim() || null,
     }));
   }catch(e){ if(e.message!=='unauthorized') el.innerHTML=`<div class="mcard"><div class="mcard-body"><div class="flash error">${e.message}</div></div></div>`; }
+}
+/* ---------- API key (Developer) ---------- */
+var API_KEY = '';
+const maskKey = (k) => !k ? '—' : (k.length<=12 ? k : k.slice(0,8)+'••••••••••••'+k.slice(-4));
+function revealKey(){
+  const el=document.getElementById('ak-key'), btn=document.getElementById('ak-reveal');
+  if(el.dataset.shown==='1'){ el.value=maskKey(API_KEY); el.dataset.shown=''; btn.innerHTML='<i data-lucide="eye" style="width:14px;height:14px"></i>Reveal'; }
+  else { el.value=API_KEY; el.dataset.shown='1'; btn.innerHTML='<i data-lucide="eye-off" style="width:14px;height:14px"></i>Hide'; }
+  icons();
+}
+async function copyText(t, btn){
+  try{ await navigator.clipboard.writeText(t); const o=btn.innerHTML; btn.innerHTML='<i data-lucide="check" style="width:14px;height:14px"></i>Copied'; icons(); setTimeout(()=>{btn.innerHTML=o;icons();},1400);}catch(_){}
+}
+function copyKey(btn){ copyText(API_KEY, btn); }
+function copySnippet(btn, base, hdr){ copyText(`curl ${base}/api/merchant-api/merchants/profile -H "${hdr}: ${API_KEY}"`, btn); }
+async function regenKey(){
+  if(!confirm('Regenerate your API key? The current key stops working immediately and any integrations using it will break until updated.')) return;
+  const res=document.getElementById('ak-result'); res.innerHTML='';
+  try{
+    const r=await api('/api/merchant-api/api-key/rotate',{method:'POST'});
+    API_KEY=r.api_key||'';
+    const el=document.getElementById('ak-key'); el.value=API_KEY; el.dataset.shown='1';
+    document.getElementById('ak-reveal').innerHTML='<i data-lucide="eye-off" style="width:14px;height:14px"></i>Hide';
+    res.innerHTML='<div class="flash success" style="margin-top:12px">New key generated. Copy it now and update your integrations.</div>'; icons();
+  }catch(err){ res.innerHTML=`<div class="flash error" style="margin-top:12px">${err.message}</div>`; }
 }
 async function saveProfile(e, resultId, body){
   e.preventDefault();
