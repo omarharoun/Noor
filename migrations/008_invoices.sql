@@ -1,4 +1,4 @@
--- Phase 2: invoicing. Depost stores invoice metadata; Modern Treasury issues the
+-- Phase 2: invoicing. Noor stores invoice metadata; Modern Treasury issues the
 -- invoice + hosts the pay page and moves the money. We keep our own row so the
 -- merchant dashboard can list/filter without calling the provider each time.
 CREATE TABLE IF NOT EXISTS invoices (
