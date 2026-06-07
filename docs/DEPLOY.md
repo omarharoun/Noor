@@ -1,6 +1,6 @@
 # Deploy topology (Supabase + Cloudflare)
 
-Noor is a long-lived Rust (`axum` + `tokio`) server with a Postgres database and
+Depost is a long-lived Rust (`axum` + `tokio`) server with a Postgres database and
 two background workers (webhook delivery, reconciliation). Recommended setup:
 
 ```

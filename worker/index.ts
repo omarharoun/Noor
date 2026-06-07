@@ -1,5 +1,5 @@
 /**
- * Cloudflare Worker entry — fronts the Noor backend container.
+ * Cloudflare Worker entry — fronts the Depost backend container.
  *
  * One container instance serves every subdomain: the Rust app routes by the
  * `Host` header (app./platform./api./apex), so we forward each request as-is to

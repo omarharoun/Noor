@@ -116,7 +116,7 @@ function Console() {
               <path d="M20 8.5a8.2 8.2 0 1 0 0 13 6.4 6.4 0 1 1 0-13Z" fill="var(--cream-deep)" />
             </svg>
           </div>
-          <span className="brand-word">Noor</span>
+          <span className="brand-word">Depost</span>
         </div>
         <div className="nav-section">Operations</div>
         {nav.slice(0, 3).map((n) => (

@@ -99,7 +99,7 @@ async fn main() -> anyhow::Result<()> {
             .map(|p| format!("0.0.0.0:{p}"))
             .unwrap_or_else(|_| "0.0.0.0:8888".into())
     });
-    info!("Noor API starting on {}", addr);
+    info!("Depost API starting on {}", addr);
 
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     axum::serve(listener, router)

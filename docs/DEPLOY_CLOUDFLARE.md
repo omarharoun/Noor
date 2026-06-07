@@ -1,4 +1,4 @@
-# Deploy Noor on Cloudflare Containers
+# Deploy Depost on Cloudflare Containers
 
 One Worker (`worker/index.ts`) fronts one Docker container (the Rust backend),
 defined in `wrangler.jsonc`. The container serves **all** subdomains — the Rust
@@ -66,9 +66,9 @@ First build is slow (full Rust release compile). Subsequent deploys reuse cache.
 
 ```bash
 curl -s https://api.norhadi.com/health           # 200
-curl -s https://api.norhadi.com/                 # "Noor API" info page
+curl -s https://api.norhadi.com/                 # "Depost API" info page
 curl -s https://app.norhadi.com/      | grep -o "Available balance"   # merchant dashboard
-curl -s https://platform.norhadi.com/ | grep -o "Noor Operations"    # operator console
+curl -s https://platform.norhadi.com/ | grep -o "Depost Operations"    # operator console
 curl -s https://norhadi.com/          | grep -o "Money movement"      # marketing
 npx wrangler tail                                  # live logs
 ```

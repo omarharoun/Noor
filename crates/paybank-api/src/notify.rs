@@ -24,7 +24,7 @@ pub async fn push(pool: &PgPool, merchant_id: Uuid, kind: &str, message: &str) {
         .and_then(|r| r.try_get::<String, _>("email").ok())
         .filter(|e| !e.trim().is_empty());
     if let Some(to) = to {
-        let subject = format!("Noor — {kind}");
+        let subject = format!("Depost — {kind}");
         let body = message.to_string();
         tokio::spawn(async move {
             paybank_payments::send_email(&to, &subject, &body).await;

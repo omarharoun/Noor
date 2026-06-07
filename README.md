@@ -1,4 +1,4 @@
-# Noor — Payment Operations Monolith
+# Depost — Payment Operations Monolith
 
 A full-stack payment processing platform with a Rust API backend, Refine + Ant Design admin dashboard, and integrations with Modern Treasury, Column, and Plaid.
 
@@ -362,7 +362,7 @@ Custom `@refinedev/simple-rest` wrapper at `/api/admin` with pagination (`limit`
 ### 1. Clone and Environment
 
 ```bash
-git clone git@github.com:omarharoun/Noor.git
+git clone git@github.com:omarharoun/Depost.git
 cd paybank-monolith
 cp .env.example .env
 ```

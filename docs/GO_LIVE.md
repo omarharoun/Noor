@@ -1,6 +1,6 @@
-# Noor — Go-Live Runbook (Modern Treasury)
+# Depost — Go-Live Runbook (Modern Treasury)
 
-Everything in Noor is built and verified against **MT Sandbox**. Going live is a
+Everything in Depost is built and verified against **MT Sandbox**. Going live is a
 **configuration switch, not a code change**: point the app at a live MT
 organization backed by a real bank account, register the live webhook, and flip
 a few Railway variables.
@@ -15,9 +15,9 @@ PSP** product covers what a payments platform needs end-to-end:
 - **Bank relationships** — MT provides/manages the partner bank + accounts, so
   you do **not** separately procure a sponsor bank.
 - **Compliance** — KYC/KYB, sanctions/OFAC screening, transaction monitoring
-  (this can power Noor's `compliance::gate`, replacing the stub).
-- **Payment orchestration** — the rails (ACH/wire/RTP/FedNow) Noor already calls.
-- **Ledgering** — MT offers it; Noor keeps its own Postgres double-entry ledger
+  (this can power Depost's `compliance::gate`, replacing the stub).
+- **Payment orchestration** — the rails (ACH/wire/RTP/FedNow) Depost already calls.
+- **Ledgering** — MT offers it; Depost keeps its own Postgres double-entry ledger
   as source of truth and reconciles against MT webhooks (no need to adopt MT
   Ledgers).
 
@@ -52,7 +52,7 @@ is the config switch. The app code is identical to sandbox.
 
 ## 3. Flip the Railway variables (sandbox → live)
 
-In Railway → the **Noor** service → Variables:
+In Railway → the **Depost** service → Variables:
 
 | Variable | Set to |
 |---|---|

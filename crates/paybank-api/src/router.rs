@@ -113,9 +113,9 @@ async fn root_handler(req: Request) -> Response {
         serve_html("admin/dist/index.html").await
     } else if host.starts_with("api.") {
         ([(axum::http::header::CONTENT_TYPE, "text/html")],
-         "<!doctype html><meta charset=utf-8><title>Noor API</title>\
+         "<!doctype html><meta charset=utf-8><title>Depost API</title>\
           <body style=\"font-family:system-ui;max-width:40rem;margin:4rem auto;padding:0 1rem;color:#211F1A\">\
-          <h1>Noor API</h1><p>This is the Noor API endpoint. \
+          <h1>Depost API</h1><p>This is the Depost API endpoint. \
           The merchant dashboard is at <a href=\"https://app.depost.io\">app.depost.io</a>.</p></body>")
             .into_response()
     } else {

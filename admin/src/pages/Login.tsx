@@ -24,17 +24,17 @@ export function Login() {
   return (
     <div style={styles.root}>
       <div style={styles.card}>
-        {/* Noor logo mark */}
+        {/* Depost logo mark */}
         <div style={styles.logoRow}>
           <div style={styles.glyph}>
             <svg viewBox="0 0 30 30" style={{ position: 'absolute', inset: 0 }}>
               <path d="M20 8.5a8.2 8.2 0 1 0 0 13 6.4 6.4 0 1 1 0-13Z" fill="var(--cream-deep)" />
             </svg>
           </div>
-          <span style={styles.brandWord}>Noor</span>
+          <span style={styles.brandWord}>Depost</span>
         </div>
 
-        <h1 style={styles.heading}>Sign in to Noor</h1>
+        <h1 style={styles.heading}>Sign in to Depost</h1>
         <p style={styles.sub}>Admin console — authorized personnel only.</p>
 
         {error && (

@@ -1,4 +1,4 @@
--- Least-privilege application DB role for Noor.
+-- Least-privilege application DB role for Depost.
 -- Run ONCE as the database owner/admin (e.g. neondb_owner). The running API then
 -- connects as `noor_app` (DML only, no DDL), while schema migrations run as the
 -- owner in a separate deploy step (set NOOR_SKIP_MIGRATE=true on the API).

@@ -1,14 +1,14 @@
-# Noor Production-Readiness Program
+# Depost Production-Readiness Program
 
 _Status: consolidated audit + remediation roadmap. Owner: Lead Engineering. Date: 2026-05-31._
 
-> Scope reminder: Noor is a regulated instant bank-to-bank (ACH/RTP/FedNow/Wire) money-movement platform. Correctness, security, and money-safety are paramount. This document consolidates the subsystem audits and the per-workstream implementation specs into a single prioritized, dependency-ordered program.
+> Scope reminder: Depost is a regulated instant bank-to-bank (ACH/RTP/FedNow/Wire) money-movement platform. Correctness, security, and money-safety are paramount. This document consolidates the subsystem audits and the per-workstream implementation specs into a single prioritized, dependency-ordered program.
 
 ---
 
 ## 1. Executive Summary
 
-Noor has strong database and code **scaffolding** but almost no enforced money-safety, security, or compliance **functionality**. Static reading of source confirms the most dangerous defects directly:
+Depost has strong database and code **scaffolding** but almost no enforced money-safety, security, or compliance **functionality**. Static reading of source confirms the most dangerous defects directly:
 
 - **The entire API is unauthenticated.** `crates/paybank-api/src/router.rs` (112 lines) mounts ~30 routes with zero middleware — no auth, CORS, rate limiting, body limits — and `src/main.rs` serves it on `0.0.0.0`. Every admin, merchant, and customer surface is reachable by any caller.
 - **Money can be moved by anyone, twice.** Both `/api/sessions/initiate` and `/api/sessions/:id/initiate` call `initiate_transfer` for any session UUID with no caller auth. `session_repo::update_status` (session_repo.rs:56-75) is an unconditional `UPDATE ... WHERE id=$1` — **not** a compare-and-swap — so concurrent/duplicate POSTs both fire a transfer. No provider `Idempotency-Key` is sent, so the provider cannot de-dupe either.
@@ -127,7 +127,7 @@ _Rationale:_ Ledger depends on lifecycle states, the executor refactor, auth sco
 
 ### Wave 5 — Webhook Authenticity & Delivery
 - **MT Webhook Signature Verification** — `HeaderMap` + HMAC over raw body using the configured MT secret, constant-time compare; align Column to constant-time + its documented scheme.
-- **Outbound Webhook Outbox + Delivery Worker** — enqueue on real transitions, `FOR UPDATE SKIP LOCKED` claim, HMAC-signed delivery with stable `X-Noor-Webhook-Id`, capped exponential backoff, admin retry endpoint + frontend wiring.
+- **Outbound Webhook Outbox + Delivery Worker** — enqueue on real transitions, `FOR UPDATE SKIP LOCKED` claim, HMAC-signed delivery with stable `X-Depost-Webhook-Id`, capped exponential backoff, admin retry endpoint + frontend wiring.
 
 _Rationale:_ Both finalize `webhooks.rs`, so they land after the lifecycle/ledger rewrites of that file. The outbox depends on the CAS (enqueue only on `rowcount=1`), the distinct states, per-provider secrets, and admin auth (retry endpoint). **Sequencing caveat (P0 tension):** MT signature verification is a critical forgery hole that ideally lands earliest; because it edits the heavily-rewritten MT handler, the pragmatic choice is to add it as the **first** edit of this wave, or hoist it into Wave 1 as a standalone `HeaderMap`+verify guard and re-integrate after the handler rewrite. Either way it is the one P0 whose placement is sequencing-driven, not priority-driven.
 
@@ -166,7 +166,7 @@ _Rationale:_ the frontend gate depends only on the Wave-1 backend admin-auth con
 - **Ledger (3):** available/pending split is derived from `journal_entries.status` (pending vs posted), requiring `create_journal_entry` to accept a status. Settlement moves to **webhook-time** (not submit-time), coordinated with Lifecycle to avoid double-posting.
 - **PII (4):** prefer **tokenization** (Plaid processor token / MT external_account_id) to eliminate storage; envelope-encrypt only the manual-entry residual. Encryption does **not** substitute for auth — safe only alongside the IDOR/exchange-overwrite fixes.
 - **Secrets (5):** rotation without history scrub leaves keys discoverable; scrub without rotation is useless. Do **both**, and pair the force-push with team coordination.
-- **Outbox (6):** at-least-once delivery — merchants dedupe on the stable `X-Noor-Webhook-Id`. Keep the poll batch small (20) and use a dedicated acquire timeout so the worker doesn't starve the request pool. Never log full payload/signature.
+- **Outbox (6):** at-least-once delivery — merchants dedupe on the stable `X-Depost-Webhook-Id`. Keep the poll batch small (20) and use a dedicated acquire timeout so the worker doesn't starve the request pool. Never log full payload/signature.
 - **Failure/Returns (7):** the transition matrix must tolerate provider **out-of-order** delivery (allow Authorized→Completed recovery edge) while forbidding downgrades out of Completed (except to Returned/Reversed). Reversal entries must mirror an existing settle journal or fall back to reconciliation flagging.
 - **Config/Health (8):** the SSE stream (sessions.rs:104-148) loops indefinitely and will hold graceful shutdown open — rely on a deployment-level grace timeout. `acquire_timeout` converts hangs into 503s (intended behavior change).
 - **Tests (9):** `sqlx` compile-time macros mean nothing builds without a live `DATABASE_URL` or a committed `.sqlx` cache — CI must own this. Env-mutating provider-selection tests must be `#[serial]`. The base-URL refactor must default to the exact current literals (covered by a default-equals-const test).

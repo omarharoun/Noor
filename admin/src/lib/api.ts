@@ -1,4 +1,4 @@
-// Thin client for Noor's admin API. All shapes mirror the Rust handlers in
+// Thin client for Depost's admin API. All shapes mirror the Rust handlers in
 // crates/paybank-api/src/routes/admin.rs and the models in paybank-core.
 
 import { STORAGE_KEY, dispatchAuthExpired } from './auth';

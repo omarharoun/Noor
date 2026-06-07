@@ -1,7 +1,7 @@
-# Noor — Compliance & Go-Live Roadmap
+# Depost — Compliance & Go-Live Roadmap
 
 _Owner: Compliance Lead. Status: active. Last revised: 2026-05-31._
-_Scope: Noor is a U.S. instant bank-to-bank (ACH / RTP / FedNow / Wire) money-movement platform. It operates as a Rust + axum monolith backed by Postgres, routes real-value payment orders through Modern Treasury (primary) and Column (fallback), and links customer bank accounts via Plaid. This document is the single source of truth for regulatory, legal, data-protection, security, and operational compliance requirements, and their go-live gates._
+_Scope: Depost is a U.S. instant bank-to-bank (ACH / RTP / FedNow / Wire) money-movement platform. It operates as a Rust + axum monolith backed by Postgres, routes real-value payment orders through Modern Treasury (primary) and Column (fallback), and links customer bank accounts via Plaid. This document is the single source of truth for regulatory, legal, data-protection, security, and operational compliance requirements, and their go-live gates._
 
 > **READ FIRST — CURRENT STATE SUMMARY.**
 > The platform is a prototype with confirmed critical gaps: (1) every `/api/admin/*` and `/api/merchant-api/*` route is unauthenticated (`router.rs` mounts all ~30 routes with zero middleware); (2) customer bank account and routing numbers are stored and transmitted in plaintext (`payment_sessions.customer_account_number`, `customer_routing_number`); (3) the Modern Treasury webhook at `/api/webhooks/moderntreasury` performs no signature verification — any attacker can forge a settlement; (4) all payment failures, returns, and reversals collapse into a single `Expired` status, destroying the audit trail needed for regulatory recordkeeping; (5) no KYC/KYB gate, no OFAC screening, no AML program is wired into the payment flow. **None of these gaps prevent development. All of them prevent lawful production operation.**
@@ -40,30 +40,30 @@ Operating independently as a money transmitter requires:
 Most payment startups, including those using Modern Treasury and Column, launch under a **sponsor bank** (also called a "banking-as-a-service" or "bank partner" model). Under this structure:
 
 - A chartered bank (e.g., Column N.A. itself, Evolve Bank & Trust, Thread Bank, Lead Bank) holds the MTLs and is the regulated entity moving money.
-- Noor operates as a **program manager** or **agent of the bank**, processing payment instructions on behalf of the bank under a written agreement.
-- The bank's existing MTLs and FinCEN MSB registration cover Noor's activity, provided Noor implements the bank's BSA/AML program requirements (see §3).
-- Column is already integrated as a payment provider — they offer a direct bank API with a BaaS framework. Confirm whether Noor's current Column agreement constitutes a sponsor arrangement or merely an API license.
+- Depost operates as a **program manager** or **agent of the bank**, processing payment instructions on behalf of the bank under a written agreement.
+- The bank's existing MTLs and FinCEN MSB registration cover Depost's activity, provided Depost implements the bank's BSA/AML program requirements (see §3).
+- Column is already integrated as a payment provider — they offer a direct bank API with a BaaS framework. Confirm whether Depost's current Column agreement constitutes a sponsor arrangement or merely an API license.
 
 **Practical recommendation:** Execute a Program Manager / Agent Agreement with a FDIC-insured sponsor bank before any production payments. The sponsor bank will mandate: (a) a written BSA/AML program, (b) a named BSA/AML Officer, (c) KYC/KYB of all merchants and customers above applicable thresholds, (d) OFAC screening, and (e) incident reporting. All of §§2–6 of this document are, effectively, the sponsor bank's pre-conditions.
 
 ### 1.4 NACHA Membership and ACH Access
 
-[BUSINESS/LEGAL] Noor uses the ACH rail. Direct ACH origination requires either:
-- Being an **ODFI** (Originating Depository Financial Institution) — a chartered bank. Noor is not.
-- Contracting with an ODFI that acts as your originating gateway. Modern Treasury and Column each have ODFI relationships that cover Noor's ACH origination when using their APIs. Confirm this is explicitly covered in your agreements with each provider.
+[BUSINESS/LEGAL] Depost uses the ACH rail. Direct ACH origination requires either:
+- Being an **ODFI** (Originating Depository Financial Institution) — a chartered bank. Depost is not.
+- Contracting with an ODFI that acts as your originating gateway. Modern Treasury and Column each have ODFI relationships that cover Depost's ACH origination when using their APIs. Confirm this is explicitly covered in your agreements with each provider.
 
-NACHA's Operating Rules bind all ACH participants. Key obligations for Noor as a **Third-Party Sender** (TPS):
+NACHA's Operating Rules bind all ACH participants. Key obligations for Depost as a **Third-Party Sender** (TPS):
 - Annual volume-based registration with NACHA if ACH credits or debits exceed thresholds.
 - Written agreement with ODFI acknowledging Third-Party Sender rules.
 - Return rate monitoring: must not exceed 0.5% unauthorized debit return rate or 3% overall debit return rate; breaches trigger NACHA investigation and potential suspension.
 - NACHA's data security requirements require encryption of account data (directly maps to §4.2 below).
 
-[CODE] `PaymentRail::Ach` is the default fallback in `rail.rs::choose`. Confirm that the ODFI relationship via Modern Treasury or Column covers Noor's origination volume at scale, not just sandbox.
+[CODE] `PaymentRail::Ach` is the default fallback in `rail.rs::choose`. Confirm that the ODFI relationship via Modern Treasury or Column covers Depost's origination volume at scale, not just sandbox.
 
 ### 1.5 FedNow and RTP Participant Requirements
 
 [BUSINESS/LEGAL]
-- **FedNow:** Only FDIC/NCUA-insured depository institutions may be direct FedNow participants. Noor must originate FedNow payments through a participant bank (Modern Treasury's or Column's banking relationship). Confirm your provider agreement explicitly grants FedNow access.
+- **FedNow:** Only FDIC/NCUA-insured depository institutions may be direct FedNow participants. Depost must originate FedNow payments through a participant bank (Modern Treasury's or Column's banking relationship). Confirm your provider agreement explicitly grants FedNow access.
 - **RTP (The Clearing House):** Same constraint — RTP participants must be federally-insured depository institutions. Modern Treasury and Column each have RTP access; this must be covered in the API agreement.
 
 [CODE] `PaymentRail::FedNow` and `PaymentRail::Rtp` are currently selected based on the `banks` table flags (`supports_fednow`, `supports_rtp`). There is no runtime verification that the provider has an active participant relationship for those rails. Add a provider capability check at session creation.
@@ -71,7 +71,7 @@ NACHA's Operating Rules bind all ACH participants. Key obligations for Noor as a
 ### Licensing Checklist
 
 - [ ] [BUSINESS/LEGAL] Identify and execute a sponsor bank / Program Manager agreement before any production payment.
-- [ ] [BUSINESS/LEGAL] Obtain written confirmation from Modern Treasury and Column that their agreements cover: (a) ACH Third-Party Sender, (b) FedNow origination, (c) RTP origination for Noor's use case and expected volume.
+- [ ] [BUSINESS/LEGAL] Obtain written confirmation from Modern Treasury and Column that their agreements cover: (a) ACH Third-Party Sender, (b) FedNow origination, (c) RTP origination for Depost's use case and expected volume.
 - [ ] [BUSINESS/LEGAL] Register as FinCEN MSB upon go-live (even under a sponsor bank, registration may be required depending on structure — confirm with counsel).
 - [ ] [BUSINESS/LEGAL] Engage payments counsel to render a legal opinion on the regulatory model and confirm state-by-state licensing obligations.
 - [ ] [BUSINESS/LEGAL] Do not onboard customers in states where the sponsor bank's coverage is ambiguous without explicit legal sign-off.
@@ -83,7 +83,7 @@ NACHA's Operating Rules bind all ACH participants. Key obligations for Noor as a
 
 ### 2.1 Regulatory Basis
 
-The Bank Secrecy Act (BSA), FinCEN's Customer Identification Program (CIP) rule (31 C.F.R. § 1020.220), and FinCEN's Customer Due Diligence (CDD) rule (31 C.F.R. § 1010.230) require that Noor (or its sponsor bank, with Noor performing verification as the program manager):
+The Bank Secrecy Act (BSA), FinCEN's Customer Identification Program (CIP) rule (31 C.F.R. § 1020.220), and FinCEN's Customer Due Diligence (CDD) rule (31 C.F.R. § 1010.230) require that Depost (or its sponsor bank, with Depost performing verification as the program manager):
 
 - Collect and verify the identity of each customer before opening an account or facilitating a transaction.
 - Collect and verify Beneficial Ownership information for legal entity customers (any entity with ≥ 25% ownership and the controlling person).
@@ -154,7 +154,7 @@ The Bank Secrecy Act (31 U.S.C. § 5318) requires any MSB (and any program manag
 ### 3.2 Written BSA/AML Program
 
 [POLICY] Draft, adopt, and maintain a written BSA/AML program covering at minimum:
-- Risk assessment of Noor's business model, customer types, geographies, and rails (FedNow/RTP/ACH/Wire each carry different risk profiles).
+- Risk assessment of Depost's business model, customer types, geographies, and rails (FedNow/RTP/ACH/Wire each carry different risk profiles).
 - Customer identification and KYC procedures (§2).
 - Transaction monitoring rules and thresholds.
 - SAR and CTR filing procedures.
@@ -162,7 +162,7 @@ The Bank Secrecy Act (31 U.S.C. § 5318) requires any MSB (and any program manag
 - Employee training plan and schedule.
 - Independent audit schedule (annually minimum).
 
-The program must be approved by senior management (or the board if Noor is a standalone entity) and reviewed at least annually.
+The program must be approved by senior management (or the board if Depost is a standalone entity) and reviewed at least annually.
 
 ### 3.3 BSA/AML Compliance Officer
 
@@ -196,7 +196,7 @@ OFAC administers U.S. sanctions programs. Facilitating a transaction involving a
 - **Structuring detection:** series of transactions just below $10,000 by the same customer within a rolling 2-day window.
 - **Velocity rules:** more than N transactions per customer per day (configurable, starting at 5); total daily volume per merchant above a configurable threshold.
 - **High-risk geography:** transactions involving IP addresses or bank routing numbers associated with high-risk jurisdictions.
-- **Wire threshold:** all wires above $3,000 require enhanced due diligence under FINCEN's "travel rule" (counterparty name and account number — most of this is already collected by Noor's confirm flow).
+- **Wire threshold:** all wires above $3,000 require enhanced due diligence under FINCEN's "travel rule" (counterparty name and account number — most of this is already collected by Depost's confirm flow).
 
 [CODE] The `transactions` table and `ledger_postings` are the data sources. Both the `LedgerRepo` and `IdempotencyRepo` currently have zero call sites in the codebase — the ledger must be wired into the settlement path (see `PRODUCTION_READINESS.md` Wave 4) before transaction monitoring can operate on real data.
 
@@ -214,7 +214,7 @@ OFAC administers U.S. sanctions programs. Facilitating a transaction involving a
 
 The BSA requires retention of:
 - All records related to the identity of customers (5 years from the date of account closure or last transaction).
-- All records of transactions transmitted through Noor (5 years from the date of the transaction).
+- All records of transactions transmitted through Depost (5 years from the date of the transaction).
 - SAR filings and supporting documentation (5 years from the date of filing).
 - CTR filings (5 years).
 
@@ -251,7 +251,7 @@ The Gramm-Leach-Bliley Act Safeguards Rule (16 C.F.R. Part 314, revised effectiv
 ### 4.2 NACHA Data Security Requirements
 
 NACHA's Operating Rules require:
-- **Encryption of account data at rest and in transit** for all ACH participants and their service providers. This applies to Noor for the account numbers and routing numbers it handles.
+- **Encryption of account data at rest and in transit** for all ACH participants and their service providers. This applies to Depost for the account numbers and routing numbers it handles.
 - **Tokenization preference:** NACHA encourages substituting account numbers with tokens (e.g., Plaid Processor Tokens, or the external account IDs issued by Modern Treasury/Column) to minimize the exposure surface.
 
 [CODE] **Critical gap:** `payment_sessions.customer_account_number` and `customer_routing_number` are stored as plaintext `TEXT` columns (confirmed in `crates/paybank-core/src/models.rs`, `PaymentSession` struct and the `confirm.rs` handler which reads and stores these values directly). The `Payment` model also carries `customer_account_number` and `customer_routing_number` as plaintext fields.
@@ -265,20 +265,20 @@ Remediation path (in order of preference):
 
 ### 4.3 PCI DSS Scope
 
-Noor does not handle payment card data (no card numbers, CVVs, or PAN). Assuming this remains true:
-- Noor is likely **out of scope for PCI DSS** and should have minimal PCI obligations.
+Depost does not handle payment card data (no card numbers, CVVs, or PAN). Assuming this remains true:
+- Depost is likely **out of scope for PCI DSS** and should have minimal PCI obligations.
 - Complete a PCI DSS SAQ (Self-Assessment Questionnaire) — likely **SAQ A** or **SAQ D-SP** depending on the sponsor bank's requirements — to formally confirm and document out-of-scope status.
-- If Noor ever adds card acceptance in the future, scope expands dramatically and this section must be revisited.
+- If Depost ever adds card acceptance in the future, scope expands dramatically and this section must be revisited.
 
-[BUSINESS/LEGAL] Obtain written confirmation from the sponsor bank that Noor's current card-out-of-scope posture is acceptable under their program.
+[BUSINESS/LEGAL] Obtain written confirmation from the sponsor bank that Depost's current card-out-of-scope posture is acceptable under their program.
 
 ### 4.4 GDPR and CCPA
 
-Noor may process personal data of individuals in the EU (GDPR) or California residents (CCPA) depending on merchant and customer geography.
+Depost may process personal data of individuals in the EU (GDPR) or California residents (CCPA) depending on merchant and customer geography.
 
 [POLICY]
-- **GDPR:** If any customer or merchant is an EU data subject: publish a privacy notice identifying Noor (or its sponsor bank) as the data controller, document legal bases for processing (contract performance, legal obligation for BSA recordkeeping), implement data subject rights workflows (access, rectification, erasure with legal-hold carve-out, portability), and conduct a DPIA (Data Protection Impact Assessment) for the payment processing activity.
-- **CCPA:** If any California resident is a customer or merchant: publish a "Notice at Collection" at point of data collection, maintain a privacy policy, implement opt-out rights for "sale/sharing" (Noor likely does not sell data, but confirm), and honor deletion requests subject to legal-hold carve-outs.
+- **GDPR:** If any customer or merchant is an EU data subject: publish a privacy notice identifying Depost (or its sponsor bank) as the data controller, document legal bases for processing (contract performance, legal obligation for BSA recordkeeping), implement data subject rights workflows (access, rectification, erasure with legal-hold carve-out, portability), and conduct a DPIA (Data Protection Impact Assessment) for the payment processing activity.
+- **CCPA:** If any California resident is a customer or merchant: publish a "Notice at Collection" at point of data collection, maintain a privacy policy, implement opt-out rights for "sale/sharing" (Depost likely does not sell data, but confirm), and honor deletion requests subject to legal-hold carve-outs.
 - GDPR/CCPA deletion requests cannot override BSA/AML 5-year retention obligations. Implement a legal-hold flag: deleted from user-visible systems but retained in a restricted-access archive until the retention window expires.
 
 ### 4.5 Data Retention and Deletion Schedule
@@ -465,20 +465,20 @@ Track and monitor return rates against NACHA's thresholds: 0.5% for unauthorized
 
 ### 6.3 Reconciliation Against Providers
 
-[CODE] Noor must reconcile its internal transaction records against Modern Treasury and Column at least daily. The current codebase has no reconciliation job.
+[CODE] Depost must reconcile its internal transaction records against Modern Treasury and Column at least daily. The current codebase has no reconciliation job.
 
 Required reconciliation workflow:
 1. At end of each business day, query Modern Treasury's payment orders API and Column's transfers API for all transactions in a time window.
-2. Compare each provider record against `transactions` and `payment_sessions` in Noor's database.
-3. Flag discrepancies: sessions in `Processing` with no provider record, sessions the provider reports as settled but Noor shows as `Processing`, amounts that do not match.
-4. Alert the operations team for any unresolved discrepancy. Escalate to the BSA/AML Officer if the discrepancy involves a completed settlement with a missing Noor record (potential ledger integrity issue).
+2. Compare each provider record against `transactions` and `payment_sessions` in Depost's database.
+3. Flag discrepancies: sessions in `Processing` with no provider record, sessions the provider reports as settled but Depost shows as `Processing`, amounts that do not match.
+4. Alert the operations team for any unresolved discrepancy. Escalate to the BSA/AML Officer if the discrepancy involves a completed settlement with a missing Depost record (potential ledger integrity issue).
 
 [CODE] The `payment_sessions.provider` column exists but is documented as sometimes not being persisted. This must be reliably set at session creation and preserved through all state transitions — it is the foreign key to the reconciliation lookup.
 
 ### 6.4 Dispute and Return Handling
 
 [POLICY] Establish a written dispute handling procedure covering:
-- Consumer disputes under Regulation E (Electronic Fund Transfer Act): consumers have the right to dispute unauthorized electronic transfers. Noor or its sponsor bank must acknowledge within 10 business days and resolve within 45 business days (or 90 for POS or new accounts).
+- Consumer disputes under Regulation E (Electronic Fund Transfer Act): consumers have the right to dispute unauthorized electronic transfers. Depost or its sponsor bank must acknowledge within 10 business days and resolve within 45 business days (or 90 for POS or new accounts).
 - Merchant disputes: a clear SLA for merchant-reported discrepancies.
 - NACHA return window: returns for most consumer debits can be received up to 60 days after settlement for unauthorized claims.
 
@@ -522,7 +522,7 @@ Required reconciliation workflow:
 
 ## 7. Prioritized Go-Live Checklist
 
-This section provides the definitive gate structure for Noor's go-live. Items are separated into three tiers: **Immediate safety** (must be done before any production traffic, regardless of pilot scope), **Minimum Viable Pilot** (required before the first real-money transaction with a real user), and **Minimum GA** (required before general availability and public marketing).
+This section provides the definitive gate structure for Depost's go-live. Items are separated into three tiers: **Immediate safety** (must be done before any production traffic, regardless of pilot scope), **Minimum Viable Pilot** (required before the first real-money transaction with a real user), and **Minimum GA** (required before general availability and public marketing).
 
 ### Tier 0 — Immediate Safety (Before Any Production Infrastructure)
 
@@ -572,7 +572,7 @@ These are the minimum controls for a limited pilot with known, manually-vetted m
 
 ### Tier 2 — Minimum GA (Required Before General Availability)
 
-These items are required before opening Noor to arbitrary merchants or customers:
+These items are required before opening Depost to arbitrary merchants or customers:
 
 **Regulatory:**
 - [ ] [BUSINESS/LEGAL] FinCEN MSB registration (if required under the sponsor bank structure — confirm with counsel).
@@ -620,13 +620,13 @@ These items are required before opening Noor to arbitrary merchants or customers
 
 Specifically: the Rust code for these handlers must check a `PAYMENT_INITIATION_ENABLED` environment variable (defaulting to `false`) and return an error to the caller if the flag is not explicitly set to `true`. This is not an optional best-practice — it is the programmatic enforcement of the legal gate described in §1. No amount of code completeness in §§2–6 substitutes for the sponsor bank agreement and legal opinion in §1. The flag must only be set in a production environment after:
 
-1. A signed sponsor bank / Program Manager Agreement is in the Noor legal file.
+1. A signed sponsor bank / Program Manager Agreement is in the Depost legal file.
 2. Written legal counsel opinion confirming the go-live regulatory model is lawful.
 3. A named BSA/AML Compliance Officer is on file with the sponsor bank.
 4. The board-approved BSA/AML written program is finalized.
 5. All Tier 1 code items above are merged, tested, and deployed.
 
-Setting the flag without these five conditions exposes every officer and director of Noor to potential criminal liability for unlicensed money transmission. This is not a technical risk — it is a legal risk that code cannot mitigate.
+Setting the flag without these five conditions exposes every officer and director of Depost to potential criminal liability for unlicensed money transmission. This is not a technical risk — it is a legal risk that code cannot mitigate.
 
 ---
 

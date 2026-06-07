@@ -1,6 +1,6 @@
 # Key & Secret Management
 
-How Noor should hold its secrets in production. Today every secret is read from
+How Depost should hold its secrets in production. Today every secret is read from
 an environment variable (see `.env.example`). That is fine for local dev and
 acceptable for a single hardened host, but for real money you want a **KMS** (Key
 Management Service) so that (1) no human ever sees the raw key, (2) keys can be
@@ -8,7 +8,7 @@ rotated without a redeploy, and (3) access is audited.
 
 ---
 
-## 1. The secrets Noor holds
+## 1. The secrets Depost holds
 
 | Secret | Used for | Blast radius if leaked |
 |---|---|---|
@@ -29,11 +29,11 @@ provider API keys. Protect those hardest.
 ### Level 1 — Secrets manager (do this first, low effort)
 
 Store the raw secrets in a managed secret store and inject them at process start.
-No code change to Noor — it still reads env vars; the platform populates them
+No code change to Depost — it still reads env vars; the platform populates them
 from the vault instead of a `.env` file on disk.
 
 - **Docker / Compose / Swarm secrets** (implemented — see below): each secret is
-  mounted as a file under `/run/secrets/<name>`; Noor reads `FOO` from the file
+  mounted as a file under `/run/secrets/<name>`; Depost reads `FOO` from the file
   named by `FOO_FILE`. Use `docker-compose.secrets.yml`.
 - **AWS**: Secrets Manager (or SSM Parameter Store, SecureString). Grant the
   task role `secretsmanager:GetSecretValue` on exactly these ARNs.
@@ -79,7 +79,7 @@ KMS (holds KEK, unexportable)
 - Generate a DEK once: `aws kms generate-data-key --key-id <KEK> --key-spec AES_256`.
   Store the returned **ciphertext** blob (the wrapped DEK) in config/DB — it is
   useless without the KMS.
-- At boot, Noor calls `kms:Decrypt(wrapped_DEK)` to get the plaintext DEK and
+- At boot, Depost calls `kms:Decrypt(wrapped_DEK)` to get the plaintext DEK and
   loads it into the existing `OnceLock` cipher. The KEK never touches the host.
 - Rotate the KEK in the KMS at will; re-wrap the DEK. Rotating the DEK itself is
   the `v2` path in §4.
@@ -90,7 +90,7 @@ stay at Level 1.
 
 ---
 
-## 3. Wiring it into Noor (minimal code change)
+## 3. Wiring it into Depost (minimal code change)
 
 The crypto layer is already isolated and **versioned** — `crypto.rs` tags
 ciphertext with `enc:v1:` and reads the key through a single `cipher()` accessor.

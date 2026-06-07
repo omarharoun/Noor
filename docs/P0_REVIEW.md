@@ -1,7 +1,7 @@
-# Noor P0 Production-Readiness Review
+# Depost P0 Production-Readiness Review
 
 **Date:** 2026-05-31
-**Scope:** Adversarial verification of the production-hardening pass on the Noor bank-to-bank payments monolith (`/home/omar/noorpay`). Rust+axum API in `crates/`, React/TS admin in `admin/`.
+**Scope:** Adversarial verification of the production-hardening pass on the Depost bank-to-bank payments monolith (`/home/omar/noorpay`). Rust+axum API in `crates/`, React/TS admin in `admin/`.
 **Method:** Per-claim refutation against source, plus a full build verification (cargo check, clippy, admin build).
 
 ## Headline

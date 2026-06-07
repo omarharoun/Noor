@@ -1548,7 +1548,7 @@ pub async fn create_invoice(
         .ok()
         .flatten()
         .and_then(|r| r.try_get::<String, _>("dn").ok())
-        .unwrap_or_else(|| "Noor".to_string());
+        .unwrap_or_else(|| "Depost".to_string());
         let to = email.to_string();
         let cust = name.to_string();
         let amount = created.total_amount as f64 / 100.0;
@@ -1748,7 +1748,7 @@ pub struct AddBankAccountRequest {
 
 /// Add (or replace) the merchant's payout/settlement bank account. Sends the
 /// details to Modern Treasury to create the counterparty + external account and
-/// starts ACH prenote verification. Raw numbers are not stored in Noor — only
+/// starts ACH prenote verification. Raw numbers are not stored in Depost — only
 /// the MT ids, the verification status, and a masked last-4.
 pub async fn add_bank_account(
     State(state): State<AppState>,

@@ -1,4 +1,4 @@
-// Auth module for Noor Admin console.
+// Auth module for Depost Admin console.
 // Stores the bearer token in localStorage under STORAGE_KEY.
 // On boot, validates the token via GET /api/admin/me.
 // Exposes a typed context and a useAuth() hook.

@@ -1,4 +1,4 @@
-# Noor — Production Readiness Gate
+# Depost — Production Readiness Gate
 
 Date: 2026-05-31
 Scope: Bank-to-bank payments monolith (Rust/axum in `crates/`, React admin in `admin/`).

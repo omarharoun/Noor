@@ -1,6 +1,6 @@
 # Secrets management
 
-Noor reads **all** secrets from environment variables at startup (see
+Depost reads **all** secrets from environment variables at startup (see
 `crates/paybank-api/src/state.rs::Config` and `std::env` reads in the payment
 providers). Nothing secret is committed to the repo.
 

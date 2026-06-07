@@ -1,10 +1,10 @@
-# Noor Production-Readiness Scorecard
+# Depost Production-Readiness Scorecard
 
 _Assessed 2026-05-31 against the original gap lists in docs/PRODUCTION_READINESS.md, docs/P0_REVIEW.md, docs/PRODUCTION_GATE.md. Status verified against current code; "done" only where confirmed in source. Updated after the code-blocker fixes (commits 4ed357a, 51fd29a) and the 006 hardening round (UNIQUE/exactly-once indexes, idempotency reaper, VALIDATE'd constraints, seed-key rotation, KMS doc)._
 
 ## Headline
 
-Noor closed every **code-closable** P0 **and** the optional hardening backlog: money-safety, ledger (incl. async-webhook settlement + DB-enforced exactly-once), webhooks, PII/crypto, auth, idempotency reaper, validated constraints, and seed-key rotation. **GO for a sandbox pilot.** **NO-GO for real money** only on the **human/vendor residue** — no remaining code blockers.
+Depost closed every **code-closable** P0 **and** the optional hardening backlog: money-safety, ledger (incl. async-webhook settlement + DB-enforced exactly-once), webhooks, PII/crypto, auth, idempotency reaper, validated constraints, and seed-key rotation. **GO for a sandbox pilot.** **NO-GO for real money** only on the **human/vendor residue** — no remaining code blockers.
 
 ## Counts
 

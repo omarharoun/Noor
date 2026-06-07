@@ -316,7 +316,7 @@ impl LedgerRepo {
     }
 
     /// A merchant's available balance = net credit on their liability
-    /// (Settlement) account — what Noor owes them and can pay out.
+    /// (Settlement) account — what Depost owes them and can pay out.
     pub async fn merchant_available_cents(
         pool: &PgPool,
         merchant_id: Uuid,

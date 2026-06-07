@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Noor — Merchant dashboard</title>
+<title>Depost — Merchant dashboard</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 :root{
@@ -175,7 +175,7 @@ html[data-theme="dark"]{
   <aside class="sidebar">
     <div class="brand-row">
       <span class="brand-glyph"><svg viewBox="0 0 34 34" style="position:absolute;inset:0"><path d="M23 9.5a9 9 0 1 0 0 15 7 7 0 1 1 0-15Z" fill="var(--cream)"/></svg></span>
-      <div><div class="brand-name">Noor</div><div class="brand-plan">Business</div></div>
+      <div><div class="brand-name">Depost</div><div class="brand-plan">Business</div></div>
     </div>
     <div class="brand-divider"></div>
     <button class="nav-item active" data-tab="overview"><i data-lucide="layout-dashboard"></i>Overview</button>
@@ -268,9 +268,9 @@ function renderGate(err){
   if (!g){ g=document.createElement('div'); g.id='gate'; document.body.appendChild(g); }
   g.style.cssText='position:fixed;inset:0;display:grid;place-items:center;background:var(--cream);z-index:100;padding:20px';
   g.innerHTML = `<div style="width:100%;max-width:390px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);box-shadow:var(--shadow-md);padding:30px">
-    <div style="display:flex;align-items:center;gap:10px"><span class="brand-glyph" style="width:30px;height:30px"><svg viewBox="0 0 34 34" style="position:absolute;inset:0"><path d="M23 9.5a9 9 0 1 0 0 15 7 7 0 1 1 0-15Z" fill="var(--cream)"/></svg></span><div class="brand-name" style="font-size:17px">Noor</div></div>
+    <div style="display:flex;align-items:center;gap:10px"><span class="brand-glyph" style="width:30px;height:30px"><svg viewBox="0 0 34 34" style="position:absolute;inset:0"><path d="M23 9.5a9 9 0 1 0 0 15 7 7 0 1 1 0-15Z" fill="var(--cream)"/></svg></span><div class="brand-name" style="font-size:17px">Depost</div></div>
     <h2 style="font-family:var(--font-serif);font-weight:500;font-size:22px;margin:16px 0 4px">Sign in</h2>
-    <p style="color:var(--ink-3);font-size:13px;margin-bottom:18px">Sign in to your Noor business account.</p>
+    <p style="color:var(--ink-3);font-size:13px;margin-bottom:18px">Sign in to your Depost business account.</p>
     ${err?`<div class="flash error">${err}</div>`:''}
     <form id="gateForm">
       <div class="field"><label>Email</label><input id="gate-email" type="email" autocomplete="username" placeholder="you@company.com"></div>
@@ -764,7 +764,7 @@ function renderBankForm(){
         <div class="field"><label>Routing number (9 digits)</label><input id="b-routing" inputmode="numeric" placeholder="021000021"></div>
       </div>
       <div class="field"><label>Account number</label><input id="b-account" inputmode="numeric" placeholder="123456789"></div>
-      <div class="flash info">Your bank details are sent securely to our banking partner to verify the account. Noor stores only the last 4 digits.</div>
+      <div class="flash info">Your bank details are sent securely to our banking partner to verify the account. Depost stores only the last 4 digits.</div>
       <div class="form-actions"><button class="mbtn mbtn-primary mbtn-md" type="submit"><i data-lucide="landmark" style="width:15px;height:15px"></i>Add & verify</button></div>
     </form><div id="bank-result"></div></div></div>`;
   icons();

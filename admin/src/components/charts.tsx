@@ -1,4 +1,4 @@
-// Lightweight hand-rolled SVG charts, ported from the Noor console UI kit.
+// Lightweight hand-rolled SVG charts, ported from the Depost console UI kit.
 
 export function BarChart({ data }: { data: { rail: string; count: number; volume: number }[] }) {
   const w = 460, h = 200, padL = 8, padB = 26, padT = 10;
