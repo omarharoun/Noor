@@ -166,6 +166,10 @@ html[data-theme="dark"]{
 .trust-row{display:flex;gap:22px;flex-wrap:wrap;margin-bottom:16px;padding:0 2px}
 .trust-row span{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;color:var(--ink-3);font-weight:500}
 .trust-row i{width:15px;height:15px;color:var(--brand)}
+.dep-footer{display:flex;align-items:center;gap:20px;flex-wrap:wrap;margin-top:28px;padding:16px 2px 8px;border-top:1px solid var(--border);font-size:11.5px;color:var(--ink-4)}
+.dep-footer span{display:inline-flex;align-items:center;gap:6px}
+.dep-footer i{width:13px;height:13px;color:var(--ink-3)}
+.dep-foot-brand{margin-left:auto;font-family:var(--font-serif);font-size:13px;color:var(--ink-3);font-weight:600}
 @media(max-width:1000px){.kpi-grid{grid-template-columns:repeat(2,1fr)}.dash-grid2{grid-template-columns:1fr}}
 </style>
 <script>(function(){try{var t=localStorage.getItem('noor_theme');if(t==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}})();</script>
@@ -216,6 +220,13 @@ html[data-theme="dark"]{
       <div id="section-bank" class="section"></div>
       <div id="section-team" class="section"></div>
       <div id="section-settings" class="section"></div>
+      <footer class="dep-footer">
+        <span><i data-lucide="shield-check"></i>AES-256 encryption at rest</span>
+        <span><i data-lucide="users"></i>Dual-control payouts</span>
+        <span><i data-lucide="check-circle-2"></i>Signed &amp; verified webhooks</span>
+        <span><i data-lucide="scale"></i>Real-time double-entry ledger</span>
+        <span class="dep-foot-brand">Depost</span>
+      </footer>
     </div>
   </div>
 </div>
@@ -357,7 +368,7 @@ async function loadSettings(){
           <div class="form-actions"><button class="mbtn mbtn-primary mbtn-md" type="submit"><i data-lucide="check" style="width:15px;height:15px"></i>Save profile</button></div>
         </form><div id="profile-result"></div></div></div>
 
-      <div class="mcard" style="margin-bottom:18px"><div class="mcard-head"><h2 class="mcard-title">API key</h2>
+      <div class="mcard" style="margin-bottom:18px"><div class="mcard-head"><h2 class="mcard-title" style="display:inline-flex;align-items:center;gap:7px"><i data-lucide="lock" style="width:15px;height:15px;color:var(--brand)"></i>API key</h2>
         <button class="mbtn mbtn-secondary mbtn-sm" onclick="regenKey()"><i data-lucide="refresh-cw" style="width:13px;height:13px"></i>Regenerate</button></div>
         <div class="mcard-body" style="max-width:620px">
           <p style="color:var(--ink-3);font-size:13px;margin:0 0 12px">Use this secret key to authenticate API requests. Keep it private — anyone with it can move money on your account.</p>
@@ -957,7 +968,7 @@ async function loadSend(){
         <div class="field"><label>Rail</label><select id="p-rail">${RAIL_OPTS.map(([v,l])=>`<option value="${v}">${l}</option>`).join('')}</select></div>
       </div>
       <div class="field"><label>Memo</label><input id="p-memo" placeholder="Optional"></div>
-      <div class="flash info">${canApprove() && USER.role==='owner' ? 'As an owner, your payouts send immediately.' : 'Payouts require approval by an admin or owner before they send.'}</div>
+      <div class="flash info"><i data-lucide="shield-check" style="width:15px;height:15px;flex:none"></i><span>${canApprove() && USER.role==='owner' ? 'Dual-control protected — as an owner you can self-approve; every payout is logged and balance-checked before it sends.' : 'Dual-control protected — every payout needs a second approver (an admin or owner) and is balance-checked before it sends.'}</span></div>
       <div class="form-actions"><button class="mbtn mbtn-primary mbtn-md" type="submit"><i data-lucide="send" style="width:15px;height:15px"></i>Send payment</button></div>
     </form><div id="send-result"></div></div></div>`;
   icons();
