@@ -198,8 +198,9 @@ pub async fn login(
 }
 
 /// Idempotently seed the bootstrap operator from `ADMIN_EMAIL`/`ADMIN_PASSWORD`
-/// (role `owner`) so a fresh database has a working login. Does nothing if that
-/// email already exists (a changed password is never reset on reboot).
+/// (role `owner`) so a fresh database has a working login. The secret is
+/// authoritative for this account's password: if it changes, the hash is
+/// re-synced on boot (rotate the secret + redeploy to rotate the login).
 pub async fn ensure_bootstrap_operator(pool: &PgPool, config: &Config) -> anyhow::Result<()> {
     match (&config.admin_email, &config.admin_password) {
         (Some(email), Some(password)) => {
@@ -454,6 +455,44 @@ pub async fn merchant_login(
         token,
         user: u.into(),
     }))
+}
+
+#[derive(serde::Deserialize)]
+pub struct ChangePasswordBody {
+    pub current_password: String,
+    pub new_password: String,
+}
+
+/// Merchant-user self-service password change. Requires the current password
+/// (so a stolen session token alone can't take over the account) and a
+/// merchant-user JWT — API keys can't change passwords.
+pub async fn merchant_change_password(
+    State(state): State<AppState>,
+    actor: AuthedMerchantUser,
+    Json(body): Json<ChangePasswordBody>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    if body.new_password.len() < 8 {
+        return Err(AppError::BadRequest(
+            "new password must be at least 8 characters".into(),
+        ));
+    }
+    let current_hash: String =
+        sqlx::query_scalar("SELECT password_hash FROM merchant_users WHERE id = $1")
+            .bind(actor.user_id)
+            .fetch_one(&state.db.pool)
+            .await
+            .map_err(|e| AppError::Internal(anyhow::anyhow!(e)))?;
+    if !verify_password(&body.current_password, &current_hash) {
+        return Err(AppError::Unauthorized);
+    }
+    let new_hash = hash_password(&body.new_password)?;
+    sqlx::query("UPDATE merchant_users SET password_hash = $1, updated_at = NOW() WHERE id = $2")
+        .bind(&new_hash)
+        .bind(actor.user_id)
+        .execute(&state.db.pool)
+        .await
+        .map_err(|e| AppError::Internal(anyhow::anyhow!(e)))?;
+    Ok(Json(serde_json::json!({ "changed": true })))
 }
 
 pub async fn merchant_me(

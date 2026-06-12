@@ -223,6 +223,10 @@ pub fn build_router(state: AppState) -> Router {
             post(routes::merchant_api::rotate_api_key),
         )
         .route(
+            "/api/merchant-api/users/change-password",
+            post(auth::merchant_change_password),
+        )
+        .route(
             "/api/merchant-api/payments",
             get(routes::merchant_api::list_payments),
         )

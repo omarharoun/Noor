@@ -123,10 +123,13 @@ pub async fn upsert_bootstrap(
     password_hash: &str,
     role: &str,
 ) -> Result<()> {
+    // The ADMIN_PASSWORD secret is authoritative for the bootstrap operator:
+    // rotating the secret + redeploying rotates the login. Only the password
+    // hash is synced — name/role edits made in the console are preserved.
     sqlx::query(
         "INSERT INTO operators (email, name, password_hash, role)
          VALUES ($1, $2, $3, $4)
-         ON CONFLICT (email) DO NOTHING",
+         ON CONFLICT (email) DO UPDATE SET password_hash = EXCLUDED.password_hash",
     )
     .bind(email)
     .bind(name)
